@@ -107,13 +107,6 @@
           <button id="prevBtn">⚡ Preview 400px</button>
           <span id="prevStatus" class="hint"></span>
         </div>
-        <div id="prevBox" class="hidden">
-          <p class="hint"><b id="prevLabel">Preview</b> — anteprima a bassa risoluzione
-            con gli effetti applicati; il rendering finale resta quello qui sotto.
-            (Oppure: pulsante ⚡ preview su ogni finestra della timeline)</p>
-          <video id="prevVideo" controls style="width:400px;max-width:100%;
-                 border-radius:8px;background:#000"></video>
-        </div>
         <video id="outVideo" controls></video>
         <a id="outDownload" class="button" download>⬇ Scarica MP4 finale</a>
       </div>
@@ -160,6 +153,23 @@
     </div>
   </section>
 </main>
+
+<!-- popup preview -->
+<div id="prevBox" class="hidden">
+  <div class="prev-popup">
+    <div class="prev-head">
+      <b id="prevLabel">Preview</b>
+      <span class="hint">anteprima 400px · il render finale resta in Output</span>
+      <button id="prevClose" title="chiudi">✕</button>
+    </div>
+    <div id="prevLoading" class="prev-loading hidden">
+      <div class="spinner"></div>
+      <span id="prevLoadTxt">generazione…</span>
+    </div>
+    <video id="prevVideo" controls style="width:400px;max-width:100%;
+           border-radius:8px;background:#000;display:block"></video>
+  </div>
+</div>
 
 <footer>TuDirector v<span id="ver"></span> — server su :18736 · tutti i riferimenti relativi (RP-safe)</footer>
 <script src="static/app.js"></script>

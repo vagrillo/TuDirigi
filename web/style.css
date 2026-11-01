@@ -178,3 +178,19 @@ footer { text-align: center; color: var(--muted); font-size: 12px; padding: 18px
   border-color: var(--accent2); }
 .window.previewing { border-color: var(--accent2);
   box-shadow: 0 0 0 1px var(--accent2); }
+/* popup preview */
+#prevBox { position: fixed; inset: 0; background: rgba(5,8,12,.72); z-index: 50;
+  display: flex; align-items: center; justify-content: center; }
+#prevBox.hidden { display: none !important; }
+.prev-popup { background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 12px 14px; box-shadow: 0 12px 48px rgba(0,0,0,.55); }
+.prev-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.prev-head b { color: var(--accent2); }
+.prev-head button { margin-left: auto; border: 0; background: var(--panel2);
+  border-radius: 6px; padding: 2px 9px; font-size: 13px; }
+.prev-loading { display: flex; align-items: center; gap: 10px; padding: 30px 40px;
+  color: var(--muted); font-size: 13px; }
+.spinner { width: 22px; height: 22px; border: 3px solid var(--line);
+  border-top-color: var(--accent2); border-radius: 50%;
+  animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }

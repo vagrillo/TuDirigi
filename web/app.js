@@ -305,6 +305,11 @@ async function startPreview(t0Arg, durArg, label) {
   const st = $("#prevStatus");
   st.textContent = label ? `preview ${label}…` : "generazione preview…";
   state.previewWindow = label || null;
+  // popup immediato con spinner
+  $("#prevLabel").textContent = label ? `Preview dello spezzone ${label}` : "Preview";
+  $("#prevLoading").classList.remove("hidden");
+  $("#prevVideo").classList.add("hidden");
+  $("#prevBox").classList.remove("hidden");
   try {
     await api(`jobs/${state.jobId}/preview`, {method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -315,16 +320,22 @@ async function startPreview(t0Arg, durArg, label) {
       const ps = j.stages.preview || {};
       if (ps.status === "done") {
         clearInterval(iv);
-        $("#prevVideo").src = `media/jobs/${state.jobId}/${ps.message}?v=${Date.now()}`;
-        $("#prevLabel").textContent = state.previewWindow
-          ? `Preview dello spezzone ${state.previewWindow}` : "Preview";
-        $("#prevBox").classList.remove("hidden");
+        $("#prevLoading").classList.add("hidden");
+        const v = $("#prevVideo");
+        v.src = `media/jobs/${state.jobId}/${ps.message}?v=${Date.now()}`;
+        v.classList.remove("hidden");
+        v.play().catch(() => {});
         st.textContent = "✓ preview pronta";
       } else if (ps.status === "error") {
         clearInterval(iv);
+        $("#prevLoading").classList.add("hidden");
+        $("#prevVideo").classList.remove("hidden");
         st.textContent = "✗ " + (ps.message || "errore").slice(0, 120);
+        $("#prevLabel").textContent = "Preview — errore";
       } else {
         st.textContent = `… ${Math.round((ps.progress || 0) * 100)}%`;
+        $("#prevLoadTxt").textContent =
+          `generazione… ${Math.round((ps.progress || 0) * 100)}%`;
       }
     }, 1500);
   } catch (e) { st.textContent = "✗ " + e.message; }
@@ -390,6 +401,22 @@ async function loadJobLog(scroll) {
     }).join("");
     if (scroll || atBottom) el.scrollTop = el.scrollHeight;
   } catch (e) { $("#logWindow").textContent = "log non disponibile: " + e.message; }
+}
+
+function initPreviewPopup() {
+  $("#prevClose").onclick = closePreviewPopup;
+  $("#prevBox").onclick = e => { if (e.target.id === "prevBox") closePreviewPopup(); };
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && !$("#prevBox").classList.contains("hidden"))
+      closePreviewPopup();
+  });
+}
+
+function closePreviewPopup() {
+  const v = $("#prevVideo");
+  v.pause();
+  v.removeAttribute("src");
+  $("#prevBox").classList.add("hidden");
 }
 
 function initLog() {
@@ -519,6 +546,7 @@ function initSettings() {
 /* ---------------------------------------------------------------- boot */
 async function boot() {
   initUpload(); initStudio(); initSkills(); initSettings(); initLog();
+  initPreviewPopup();
   $$("nav button").forEach(b => b.onclick = () => show(b.dataset.view));
   try {
     const data = await api("skills");

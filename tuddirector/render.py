@@ -319,20 +319,39 @@ def _build_track_graph(d_list: List[Dict[str, Any]], duration: float, fps: int,
 # ---------------------------------------------------------------- ffmpeg runner
 def _run_ffmpeg(cmd: List[str], progress_cb: Optional[Callable] = None,
                 total: float = 1.0) -> None:
-    cmd = cmd + ["-nostats", "-progress", "pipe:1"]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    assert proc.stdout is not None
-    for line in proc.stdout:
-        if progress_cb and line.startswith("out_time_ms="):
+    # stderr su file temporaneo: se restasse su PIPE e ffmpeg scrive molti warning,
+    # il buffer da 64KB si riempie e ffmpeg si blocca in deadlock (visto in preview
+    # con spotlight). Drain immediato dello stdout, stderr scaricato su disco.
+    import tempfile, os
+    fd, errname = tempfile.mkstemp(suffix=".log")
+    os.close(fd)
+    try:
+        cmd = cmd + ["-nostats", "-progress", "pipe:1"]
+        with open(errname, "w") as errh:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errh, text=True)
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            if progress_cb and line.startswith("out_time_ms="):
+                try:
+                    us = float(line.split("=", 1)[1].strip())
+                    progress_cb(min(0.99, (us / 1e6) / max(total, 0.1)))
+                except ValueError:
+                    pass
+        proc.wait()
+        err = ""
+        if proc.returncode != 0:
             try:
-                us = float(line.split("=", 1)[1].strip())
-                progress_cb(min(0.99, (us / 1e6) / max(total, 0.1)))
-            except ValueError:
+                with open(errname) as fh:
+                    err = fh.read()[-800:]
+            except OSError:
                 pass
-    proc.wait()
-    if proc.returncode != 0:
-        err = proc.stderr.read()[-800:] if proc.stderr else ""
-        raise RenderError(f"ffmpeg exit {proc.returncode}: {err}")
+        if proc.returncode != 0:
+            raise RenderError(f"ffmpeg exit {proc.returncode}: {err}")
+    finally:
+        try:
+            os.unlink(errname)
+        except OSError:
+            pass
 
 
 def _encode_args(crf: int = 20, preset: str = "veryfast") -> List[str]:
