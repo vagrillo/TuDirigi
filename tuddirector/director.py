@@ -88,8 +88,10 @@ def _fmt_captions(caps: List[Dict[str, Any]], n_tracks: int) -> str:
     for c in caps:
         track = c.get("track", 0)
         tag = f"[CAM {track}] " if n_tracks > 1 else ""
+        spos = c.get("subject_pos", "absent")
         lines.append(f"[{_fmt_time(c['t'])}] {tag}{c['caption']} "
-                     f"(inquadratura: {c.get('shot', 'medium')}; volti: {c.get('faces', 0)})")
+                     f"(inquadratura: {c.get('shot', 'medium')}; volti: {c.get('faces', 0)}; "
+                     f"soggetto: {spos})")
     return "\n".join(lines)
 
 
@@ -150,6 +152,43 @@ Rispondi SOLO con il JSON structured output richiesto."""
 
     return [{"role": "system", "content": system},
             {"role": "user", "content": "\n\n".join(parts)}]
+
+
+# ---------------------------------------------------------------- anti-overlap
+def _dominant_subject_pos(captions: List[Dict[str, Any]], t0: float, t1: float) -> str:
+    """Posizione dominante del soggetto nella finestra (dalle didascalie vision)."""
+    from collections import Counter
+    vals = [c.get("subject_pos", "absent") for c in captions
+            if t0 <= c.get("t", -1) <= t1]
+    vals = [v for v in vals if v in ("left", "center", "right")]
+    if not vals:
+        return "absent"
+    return Counter(vals).most_common(1)[0][0]
+
+
+def avoid_subject(decisions: List[Dict[str, Any]], captions: List[Dict[str, Any]],
+                  window: Tuple[float, float]) -> None:
+    """Garanzia server-side: polaroid/citazioni NON si sovrappongono al soggetto.
+
+    Se il soggetto dominante occupa il terzo scelto per la grafica (o il centro),
+    la grafica viene spostata sul terzo opposto; con soggetto al centro si usa
+    sempre un lato. Modifica `decisions` in place.
+    """
+    t0, t1 = window
+    sp = _dominant_subject_pos(captions, t0, t1)
+    opposite = {"left": "right", "right": "left"}
+    for d in decisions:
+        if d.get("type") not in ("polaroid", "citation_card"):
+            continue
+        p = d.setdefault("params", {})
+        pos = p.get("pos", "right")
+        if sp == "center":
+            if pos == "center":
+                p["pos"] = "right"  # soggetto al centro → sempre un lato
+        elif sp in opposite:
+            if pos == sp or pos == "center":
+                p["pos"] = opposite[sp]
+        # sp == "absent" → lascia la scelta del regista
 
 
 # ---------------------------------------------------------------- mock (demo)
@@ -243,6 +282,7 @@ def direct_window(job_dir: Any, window: Tuple[float, float],
         decs = [d for d in (validate_decision(
             d, t0, t1, allowed, skill["limits"]["max_zoom_strength"], n_tracks > 1,
             video_duration, n_tracks) for d in decisions) if d]
+        avoid_subject(decs, captions, window)
         result.update(summary="Mock: finestra demo con decisioni guidate da keyword.",
                       mood="neutro", decisions=decs)
         return result
@@ -270,6 +310,7 @@ def direct_window(job_dir: Any, window: Tuple[float, float],
                                   n_tracks > 1, video_duration, n_tracks)
             if v:
                 decs.append(v)
+        avoid_subject(decs, captions, window)
         result.update(summary=str(parsed.get("summary", ""))[:500],
                       mood=parsed.get("mood") if parsed.get("mood") in MOODS else "neutro",
                       decisions=decs, engine="openrouter",
@@ -281,5 +322,6 @@ def direct_window(job_dir: Any, window: Tuple[float, float],
         decs = [d for d in (validate_decision(
             d, t0, t1, allowed, skill["limits"]["max_zoom_strength"], n_tracks > 1,
             video_duration, n_tracks) for d in decs) if d]
+        avoid_subject(decs, captions, window)
         result["decisions"] = decs
     return result

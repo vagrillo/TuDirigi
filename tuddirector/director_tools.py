@@ -186,6 +186,14 @@ def params_schema(tid: str) -> Dict[str, Any]:
             "additionalProperties": True}
 
 
+def _svg_has_visible_text(svg: str) -> bool:
+    """True se l'SVG contiene testo visibile (contenuto tra tag)."""
+    if not svg or not svg.strip():
+        return False
+    texts = re.findall(r">([^<>]+)<", svg)
+    return any(t.strip() for t in texts)
+
+
 def director_json_schema(allowed: List[str], moods: List[str]) -> Dict[str, Any]:
     """Schema structured output per una finestra di regia."""
     return {
@@ -287,6 +295,11 @@ def validate_decision(dec: Dict[str, Any], window_t0: float, window_t1: float,
         else:
             params[k] = str(raw or "")
 
+    # ── parametri obbligatori NON vuoti: mai overlay vuoti a schermo ─────────
+    for k, spec in tool["params"].items():
+        if spec.get("required") and not str(params.get(k, "")).strip():
+            return None
+
     if dtype == "zoom":
         params["strength"] = _clamp(params.get("strength", 0.3), 0.05, max_zoom)
     if dtype == "camera_switch":
@@ -297,6 +310,8 @@ def validate_decision(dec: Dict[str, Any], window_t0: float, window_t1: float,
         svg = params.get("svg", "")
         if _SVG_OK.search(svg) or not _SVG_OK_TAGS.search(svg):
             return None
+        if not _svg_has_visible_text(svg):
+            return None  # SVG senza testo visibile → niente banner vuoti
         if len(svg) > 20000:
             svg = svg[:20000]
             params["svg"] = svg

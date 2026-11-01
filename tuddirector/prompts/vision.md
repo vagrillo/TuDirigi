@@ -15,6 +15,11 @@ Per OGNI fotogramma restituisci (JSON structured output):
 - `motion`: movimento percepito tra i fotogrammi vicini — es. `statico`,
   `pan-right`, `pan-left`, `zoom-in`, `handheld`, `soggetto in movimento`,
   `scena esterna in movimento` (auto/bici).
+- `subject_pos`: dove si trova IL SOGGETTO PRINCIPALE (la persona che parla o
+  l'elemento più importante) nell'inquadratura, in termini di TERZI orizzontali:
+  `left` (terzo sinistro), `center` (terzo centrale), `right` (terzo destro),
+  `absent` (nessun soggetto dominante / solo ambiente). È usato dal regista per
+  posizionare grafiche senza coprire il soggetto: sii preciso.
 
 Regole:
 - Sii specifico: "una persona in cappotto rosso parla davanti a un vetrata di un

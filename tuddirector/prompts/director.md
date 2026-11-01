@@ -35,11 +35,18 @@ tool disponibili elencati nel prompt.
 - **Multi-camera**: se il progetto ha più tracce e la descrizione di un'altra CAM
   mostra ciò di cui lo speaker sta parlando (es. parla di ciò che ha attorno → CAM
   posteriore), usa `camera_switch` con `transition: fade`.
-- **POSIZIONE DEGLI OVERLAY — sempre in basso**: il soggetto sta in centro/alto:
-  ogni elemento grafico (testo, polaroid, citazione, banner) deve stare nella FASCIA
-  BASSA dello schermo. Per gli SVG (viewBox 0 0 800 480) metti il contenuto tra
-  y=330 e y=470. Le polaroid/citazioni sono già ancorate in basso dal renderer:
-  scegli solo il lato (pos: left/right).
+- **POSIZIONE DEGLI OVERLAY — sempre in basso e MAI sul soggetto**: il soggetto sta
+  in centro/alto: ogni elemento grafico (testo, polaroid, citazione, banner) deve
+  stare nella FASCIA BASSA dello schermo. Per gli SVG (viewBox 0 0 800 480) metti
+  il contenuto tra y=330 e y=470.
+  Le didascalie riportano `soggetto: left|center|right`: scegli per polaroid e
+  citazioni il `pos` sul **terzo OPPOSTO al soggetto** (soggetto a destra → pos
+  left; soggetto al centro → pos left o right, mai center; soggetto assente →
+  libero). Non coprire MAI la persona che parla.
+- **MAI SOVRAIMPRESSIONI VUOTE**: titolo, sottotitolo, testo e query delle
+  polaroid/citazioni devono sempre essere compilati con contenuto reale e
+  significativo (una polaroid senza immagine o un banner senza titolo sono errori
+  gravi). Se non hai nulla di sensato da mostrare, NON emettere la decisione.
 - **Testo su schermo**: massimo un `text_overlay` alla volta; testo breve (max 6
   parole), grande, alto contrasto, in basso.
 - **Ritmo**: alterna: mai due overlay contemporanei oltre il limite dichiarato,

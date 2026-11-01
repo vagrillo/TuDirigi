@@ -38,9 +38,23 @@ def _dl(url: str, dest: Path, min_bytes: int = 8000) -> bool:
         if r.status_code != 200 or len(r.content) < min_bytes:
             return False
         dest.write_bytes(r.content)
+        if not _is_meaningful_image(dest):
+            return False  # immagine vuota/bianca/uniforme → prova la fonte successiva
         return True
     except requests.RequestException:
         return False
+
+
+def _is_meaningful_image(path: Path) -> bool:
+    """Scarta immagini quasi uniformi (bianche/nero/sfuocate): polaroid mai vuote."""
+    try:
+        from PIL import Image
+        import numpy as np
+        img = Image.open(path).convert("L").resize((48, 32))
+        a = np.asarray(img, dtype=np.float32)
+        return float(a.std()) > 6.0 and 5.0 < float(a.mean()) < 250.0
+    except Exception:
+        return True  # non verificabile: accetta (il placeholder copre il resto)
 
 
 # ---------------------------------------------------------------- Openverse

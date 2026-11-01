@@ -409,7 +409,12 @@ def render_job(job: Dict[str, Any], job_dir: Path, progress_cb=None) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     final = out_dir / "final.mp4"
     # fps di uscita: per-job (auto = fedele alla sorgente) o da settings
-    fps = int(job.get("out_fps") or s.out_fps or 25)
+    fps = int(job.get("out_fps") or 0)
+    if not fps:
+        fps = int(s.out_fps or 0)
+    if not fps:
+        # auto: fps del primo stream video (anche per job vecchi senza out_fps)
+        fps = int(round(min(60, max(24, (job.get("tracks") or [{}])[0].get("fps") or 25))))
 
     tracks = job.get("tracks", [])
     if not tracks:

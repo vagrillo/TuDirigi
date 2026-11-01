@@ -47,8 +47,10 @@ def _schema(batch_len: int) -> Dict[str, Any]:
                                      "enum": ["wide", "medium", "close", "macro", "other"]},
                             "faces": {"type": "integer"},
                             "motion": {"type": "string"},
+                            "subject_pos": {"type": "string",
+                                            "enum": ["left", "center", "right", "absent"]},
                         },
-                        "required": ["i", "caption", "shot", "faces", "motion"],
+                        "required": ["i", "caption", "shot", "faces", "motion", "subject_pos"],
                     },
                 }
             },
@@ -94,9 +96,11 @@ def _mock_caption(idx_in_batch: int, path: Path) -> Dict[str, Any]:
         "inquadratura larga di uno spazio aperto",
     ]
     shot = "close" if var > 60 else ("medium" if bright < 150 else "wide")
+    pos = ["center", "absent", "right", "left", "absent", "absent"][idx_in_batch % 6]
     return {"caption": scenes[idx_in_batch % len(scenes)],
             "shot": shot, "faces": 1 if var > 40 else 0,
-            "motion": "statico" if var < 30 else "movimento"}
+            "motion": "statico" if var < 30 else "movimento",
+            "subject_pos": pos}
 
 
 def describe_batch(batch: List[Tuple[float, Path]], model: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -113,7 +117,7 @@ def describe_batch(batch: List[Tuple[float, Path]], model: Optional[str] = None)
             digest = hashlib.md5(path.read_bytes()).hexdigest()
         except Exception:
             digest = ""
-        cached = cache.get("vision", f"{model}:{digest}") if digest else None
+        cached = cache.get("vision", f"{model}:v2:{digest}") if digest else None
         if cached:
             results[i] = {"t": t, **cached}
         else:
@@ -143,16 +147,19 @@ def describe_batch(batch: List[Tuple[float, Path]], model: Optional[str] = None)
                 gi = to_ask[i]
                 t, path = batch[gi]
                 shot = str(f.get("shot", "medium")).lower()
+                spos = str(f.get("subject_pos", "absent")).lower()
                 payload = {
                     "caption": str(f.get("caption", "")).strip()[:400],
                     "shot": shot if shot in _VALID_SHOTS else "medium",
                     "faces": max(0, int(f.get("faces") or 0)),
                     "motion": str(f.get("motion", ""))[:60],
+                    "subject_pos": spos if spos in ("left", "center", "right", "absent")
+                                   else "absent",
                 }
                 results[gi] = {"t": t, **payload}
                 digest = results[gi].get("_digest")
                 if digest:
-                    cache.put("vision", f"{model}:{digest}", payload)
+                    cache.put("vision", f"{model}:v2:{digest}", payload)
         for gi in to_ask:
             if not results[gi].get("caption"):
                 t, path = batch[gi]
