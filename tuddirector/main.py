@@ -324,7 +324,7 @@ def preview(job_id: str, payload: Optional[dict] = None) -> dict:
             out = _r.build_preview(job, job_dir, t0, dur,
                                    progress_cb=lambda p: STORE.stage_progress(
                                        job_id, "preview", p, "preview"))
-            STORE.stage_done(job_id, "preview", f"{out.name}")
+            STORE.stage_done(job_id, "preview", f"output/{out.name}")
             # ripristina lo stato del job (la preview non è un run completo)
             back = "done" if job.get("output") else "idle"
             STORE.update(job_id, status=back, stage=None, error=None)

@@ -331,7 +331,9 @@ async function startPreview(t0Arg, durArg, label) {
         clearInterval(iv);
         $("#prevLoading").classList.add("hidden");
         const v = $("#prevVideo");
-        v.src = `media/jobs/${state.jobId}/${ps.message}?v=${Date.now()}`;
+        const rel = ps.message.startsWith("output/") ? ps.message
+                                                     : "output/" + ps.message;
+        v.src = `media/jobs/${state.jobId}/${rel}?v=${Date.now()}`;
         v.classList.remove("hidden");
         // autoplay spesso bloccato (gesto scaduto): fallback click-to-play
         const pr = v.play();
@@ -351,7 +353,13 @@ async function startPreview(t0Arg, durArg, label) {
           `generazione… ${Math.round((ps.progress || 0) * 100)}%`;
       }
     }, 1200);
-  } catch (e) { st.textContent = "✗ " + e.message; }
+  } catch (e) {
+    // es. 409 "job in esecuzione": mostra l'errore DENTRO il popup e ferma lo spinner
+    $("#prevLoading").classList.add("hidden");
+    $("#prevVideo").classList.remove("hidden");
+    $("#prevLabel").textContent = "Preview — " + e.message.slice(0, 80);
+    st.textContent = "✗ " + e.message;
+  }
 }
 
 /* ---------------------------------------------------------------- merge */
