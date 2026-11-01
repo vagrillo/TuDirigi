@@ -207,8 +207,8 @@ def _mock_decisions(window: Tuple[float, float], transcript: List[Dict[str, Any]
     if "bello" in text or "incredibile" in text or "spettacolo" in text:
         add("effects", t0 + 1, 8.0, {"saturation": 0.12, "contrast": 0.06}, "momento positivo")
     svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 480">'
-           '<rect x="120" y="190" width="560" height="90" rx="14" fill="#000000aa"/>'
-           '<text x="400" y="248" text-anchor="middle" font-family="DejaVu Sans" '
+           '<rect x="120" y="360" width="560" height="90" rx="14" fill="#000000aa"/>'
+           '<text x="400" y="418" text-anchor="middle" font-family="DejaVu Sans" '
            'font-size="44" font-weight="bold" fill="#ffffff">MOMENTO CHIAVE</text></svg>')
     if len(added) < 2:
         add("text_overlay", t0 + 20, 4.0, {"svg": svg, "anim": "fade"}, "sottolinea il momento")

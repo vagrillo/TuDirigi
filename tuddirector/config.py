@@ -58,7 +58,9 @@ class Settings(BaseSettings):
     assets_policy: str = "auto"       # auto: openverse → wikimedia → fal generate
     out_w: int = 1280
     out_h: int = 720
-    out_fps: int = 25
+    out_fps: int = 0                  # 0 = auto: usa gli fps della sorgente (clamp 24–60)
+    audio_offset_ms: int = 0          # offset audio nel render: >0 = voce più tardi,
+                                      # <0 = voce più presto (compensa desync sorgente)
 
     class Config:
         env_prefix = "TD_"

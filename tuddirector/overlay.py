@@ -54,7 +54,7 @@ def svg_to_png(svg: str, out_png: Path) -> Path:
 
 
 def fallback_title_svg(title: str, subtitle: str = "", style: str = "title") -> str:
-    """Template SVG di riserva per overlay testuali."""
+    """Template SVG di riserva per overlay testuali — sempre nella fascia bassa."""
     def esc(t: str) -> str:
         return (t or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     title = esc(title[:60]) or "Titolo"
@@ -67,11 +67,11 @@ def fallback_title_svg(title: str, subtitle: str = "", style: str = "title") -> 
   <text x="70" y="{y_title}" font-family="DejaVu Sans" font-size="40" font-weight="bold" fill="#ffffff">{title}</text>
   {f'<text x="70" y="{y_sub}" font-family="DejaVu Sans" font-size="28" fill="#cfd8e3">{sub}</text>' if sub else ''}
 </svg>'''
-    # title centered
+    # title centered → posizionato NELLA FASCIA BASSA (non copre il soggetto)
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {DESIGN_W} {DESIGN_H}">
-  <rect x="110" y="180" width="580" height="120" rx="16" fill="#000000" opacity="0.72"/>
-  <text x="400" y="235" text-anchor="middle" font-family="DejaVu Sans" font-size="46" font-weight="bold" fill="#ffffff">{title}</text>
-  {f'<text x="400" y="278" text-anchor="middle" font-family="DejaVu Sans" font-size="26" fill="#dfe7f0">{sub}</text>' if sub else ''}
+  <rect x="110" y="330" width="580" height="120" rx="16" fill="#000000" opacity="0.72"/>
+  <text x="400" y="385" text-anchor="middle" font-family="DejaVu Sans" font-size="46" font-weight="bold" fill="#ffffff">{title}</text>
+  {f'<text x="400" y="428" text-anchor="middle" font-family="DejaVu Sans" font-size="26" fill="#dfe7f0">{sub}</text>' if sub else ''}
 </svg>'''
 
 

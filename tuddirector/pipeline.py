@@ -52,7 +52,12 @@ def _run(job_id: str) -> None:
             meta["role"] = "main" if i == 0 else f"cam-{i}"
             tracks_meta.append(meta)
         STORE.update(job_id, tracks=tracks_meta)
-        STORE.stage_done(job_id, "probe", f"{len(tracks_meta)} tracce")
+        # fps di uscita: 0 = auto → fedele alla sorgente (niente conversione forzata)
+        out_fps = s.out_fps
+        if not out_fps:
+            out_fps = int(round(min(60, max(24, tracks_meta[0].get("fps") or 25))))
+        STORE.update(job_id, out_fps=out_fps)
+        STORE.stage_done(job_id, "probe", f"{len(tracks_meta)} tracce, out {out_fps}fps")
 
         # ---------------------------------------------------------- 1. extract
         STORE.stage_start(job_id, "extract", "estrazione audio e fotogrammi")

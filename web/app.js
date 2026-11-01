@@ -358,6 +358,8 @@ async function loadSettings() {
     ["vision_batch", "Frame per richiesta vision"],
     ["vision_concurrency", "Richieste vision in parallelo"],
     ["assets_policy", "Policy asset: auto | search | generate"],
+    ["out_fps", "FPS uscita (0 = auto: fedeli alla sorgente)"],
+    ["audio_offset_ms", "Offset audio ms (+ ritarda voce, − anticipa)"],
   ];
   $("#settingsForm").innerHTML = fields.map(([k, label]) => `
     <label>${label}<input data-key="${k}" value="${esc(String(s.editable[k] ?? ""))}"></label>`).join("") +

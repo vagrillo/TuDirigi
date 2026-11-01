@@ -222,7 +222,7 @@ poi trasformate in PNG "polaroid" (cornice bianca, rotazione, caption, ombra) vi
     ri-eseguito (o frame identici tra video) non ripaga il modello;
   - `stt/` — trascrizione per **hash dell'audio** + modello.
 
-## 9. Slowmo reale e sincronia A/V
+## 9. Slowmo reale, fps sorgente e sincronia A/V
 
 Il rallenty è implementato con una **timeline segmentata**: ogni decisione `slowmo`
 prende `dur × factor` secondi di sorgente e li espande a `dur` secondi di uscita
@@ -232,6 +232,18 @@ prende `dur × factor` secondi di sorgente e li espande a `dur` secondi di uscit
 - la durata totale **aumenta** di `dur × (1 − factor)` (nessun contenuto scartato);
 - tutte le decisioni successive vengono **rimappate** sul nuovo tempo di uscita;
 - nel percorso multi-camera il rallenty resta approssimato a freeze-frame (v2.1).
+
+Per la sincronia A/V:
+
+- **fps di uscita = fps della sorgente** (impostazione `out_fps: 0` = auto): nessuna
+  conversione forzata (es. 30→25) che può dare percezione di labiale fuori sync;
+- **`audio_offset_ms`**: compensazione manuale del desync della sorgente
+  (+ ritarda la voce, − la anticipa) applicata nel filtergraph (adelay/atrim);
+- gli **overlay sono ancorati alla fascia bassa** dello schermo (polaroid, citazioni,
+  sticker, banner): non coprono il soggetto; il prompt del regista impone la stessa
+  regola per gli SVG;
+- **varietà di camera**: il prompt impone di alternare zoom e pan (il pan ampio e
+  lento è il "guardarsi attorno"), massimo 2 zoom per finestra.
 
 ## 10. Roadmap LLM (v3)
 

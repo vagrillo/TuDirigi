@@ -109,15 +109,37 @@ def _eq_expr(p: Dict[str, Any]) -> Optional[str]:
 
 
 def _overlay_pos(pos: str) -> str:
+    """Posizione X degli overlay: sempre con margine, mai centrati sul soggetto."""
     return {"left": "40", "right": "W-w-40", "center": "(W-w)/2"}.get(pos, "(W-w)/2")
 
 
+def _overlay_y_bottom() -> str:
+    """Posizione Y degli overlay: ancorata IN BASSO (non copre il soggetto)."""
+    return "H-h-40"
+
+
 def _sticker_xy(path_expr_kind: str, t0: float, dur: float) -> Tuple[str, str]:
+    # l'attraversata avviene nella fascia bassa dello schermo
+    y_bottom = "'H-h-40'"
     if path_expr_kind == "ltr":
-        return (f"'-w+(W+w)*(t-{t0:.3f})/{max(dur, 0.1):.3f}'", "'(H-h)/2'")
+        return (f"'-w+(W+w)*(t-{t0:.3f})/{max(dur, 0.1):.3f}'", y_bottom)
     if path_expr_kind == "down-up":
         return (f"'(W-w)/2'", f"'H-(H+h)*(t-{t0:.3f})/{max(dur, 0.1):.3f}'")
-    return (f"'W-(W+w)*(t-{t0:.3f})/{max(dur, 0.1):.3f}'", "'(H-h)/2'")
+    return (f"'W-(W+w)*(t-{t0:.3f})/{max(dur, 0.1):.3f}'", y_bottom)
+
+
+def _audio_offset_chain() -> List[str]:
+    """Filtri per compensare il desync della sorgente (settings.audio_offset_ms).
+
+    >0 ritarda l'audio (voce più tardi), <0 lo anticipa (taglia l'inizio).
+    """
+    s = settings()
+    ms = int(getattr(s, "audio_offset_ms", 0) or 0)
+    if ms > 0:
+        return [f"adelay={ms}|{ms}"]
+    if ms < 0:
+        return [f"atrim=start={-ms / 1000:.3f}", "asetpts=PTS-STARTPTS"]
+    return []
 
 
 # ---------------------------------------------------------------- timeline slowmo
@@ -314,10 +336,10 @@ def _encode_args(crf: int = 20) -> List[str]:
 
 
 def render_track(src: Path, out: Path, d_list: List[Dict[str, Any]], duration: float,
-                 progress_cb=None) -> Path:
+                 progress_cb=None, fps: int = 25) -> Path:
     """Passata video-only per una traccia (zoom + effetti; slowmo→freeze)."""
     s = settings()
-    graph, freeze = _build_track_graph(d_list, duration, s.out_fps)
+    graph, freeze = _build_track_graph(d_list, duration, fps)
     inputs: List[str] = ["-i", str(src)]
     extra: List[Tuple[Dict[str, Any], int]] = []
     fi = 1
@@ -342,7 +364,7 @@ def render_track(src: Path, out: Path, d_list: List[Dict[str, Any]], duration: f
         last = nxt
     fc += f";[{last}]format=yuv420p[vout]"
     cmd = (["ffmpeg", "-y"] + inputs + ["-filter_complex", fc, "-map", "[vout]",
-            "-t", f"{duration:.3f}", "-r", str(s.out_fps)] + _encode_args() + [str(out)])
+            "-t", f"{duration:.3f}", "-r", str(fps)] + _encode_args() + [str(out)])
     _run_ffmpeg(cmd, progress_cb, duration)
     return out
 
@@ -386,6 +408,8 @@ def render_job(job: Dict[str, Any], job_dir: Path, progress_cb=None) -> Path:
     out_dir = job_dir / "output"
     out_dir.mkdir(parents=True, exist_ok=True)
     final = out_dir / "final.mp4"
+    # fps di uscita: per-job (auto = fedele alla sorgente) o da settings
+    fps = int(job.get("out_fps") or s.out_fps or 25)
 
     tracks = job.get("tracks", [])
     if not tracks:
@@ -415,17 +439,17 @@ def render_job(job: Dict[str, Any], job_dir: Path, progress_cb=None) -> Path:
 
     if not switch_times:
         return _render_single(job_dir, src0, decisions, duration, tracks, final,
-                              progress_cb)
+                              progress_cb, fps)
 
     # ------- multi-camera: per-traccia intermedi + assemblaggio + overlays
     return _render_multicam(job_dir, src0, decisions, duration, tracks, switches,
-                            switch_times, final, progress_cb)
+                            switch_times, final, progress_cb, fps)
 
 
 # ---------------------------------------------------------------- single track
 def _render_single(job_dir: Path, src0: Path, decisions: List[Dict[str, Any]],
                    duration: float, tracks: List[Dict[str, Any]], final: Path,
-                   progress_cb=None) -> Path:
+                   progress_cb=None, fps: int = 25) -> Path:
     """Una passata: timeline (slowmo reale) → camera → overlays → audio + narrazioni."""
     s = settings()
     slowmos = [d for d in decisions if d["type"] == "slowmo"]
@@ -442,7 +466,7 @@ def _render_single(job_dir: Path, src0: Path, decisions: List[Dict[str, Any]],
         d2["t"] = remap(d["t"])
         cam_decisions.append(d2)
     cam_decisions.sort(key=lambda d: d["t"])
-    graph, freeze_unused = _build_track_graph(cam_decisions, out_dur, s.out_fps,
+    graph, freeze_unused = _build_track_graph(cam_decisions, out_dur, fps,
                                               with_fps=False)
 
     inputs: List[str] = ["-i", str(src0)]
@@ -456,7 +480,7 @@ def _render_single(job_dir: Path, src0: Path, decisions: List[Dict[str, Any]],
         # zoompan ri-temporizza a fps uniformi, quindi lo stretch DEVE avvenire
         # dopo zoompan (prima del concat), altrimenti viene annullato.
         s_out = settings()
-        fc_parts.append(f"[0:v]fps={s.out_fps}[pf]")
+        fc_parts.append(f"[0:v]fps={fps}[pf]")
         n = len(segs)
         split_labels = [f"sp{k}" for k in range(n)]
         fc_parts.append(";" + f"[pf]split={n}[" + "][".join(split_labels) + "]")
@@ -478,7 +502,7 @@ def _render_single(job_dir: Path, src0: Path, decisions: List[Dict[str, Any]],
                 d2["t"] = round((t0s - out_a) * f, 3)
                 d2["dur"] = round((t1s - t0s) * f, 3)
                 seg_ds.append(d2)
-            graph_k, _ = _build_track_graph(seg_ds, b - a, s.out_fps, with_fps=False)
+            graph_k, _ = _build_track_graph(seg_ds, b - a, fps, with_fps=False)
             sk = f"sg{k}"
             fc_parts.append(";" + f"[{split_labels[k]}]trim=start={a:.3f}:end={b:.3f},"
                                   f"setpts=PTS-STARTPTS{',' if graph_k else ''}"
@@ -510,7 +534,7 @@ def _render_single(job_dir: Path, src0: Path, decisions: List[Dict[str, Any]],
         if d["type"] == "sticker_anim":
             x, y = _sticker_xy(p.get("path", "rtl"), d["t"], d["dur"])
         elif d["type"] in ("polaroid", "citation_card"):
-            x, y = f"'{_overlay_pos(p.get('pos', 'right'))}'", "'(H-h)/2'"
+            x, y = f"'{_overlay_pos(p.get('pos', 'right'))}'", f"'{_overlay_y_bottom()}'"
         else:
             x, y = "0", "0"
         fc_parts.append(f";[{last}][oi{fi}]overlay=x={x}:y={y}:"
@@ -528,9 +552,11 @@ def _render_single(job_dir: Path, src0: Path, decisions: List[Dict[str, Any]],
 
     has_audio = bool(tracks[0].get("has_audio"))
     audio_label = None
+    off_chain = _audio_offset_chain()
+    off_str = ("," + ",".join(off_chain)) if off_chain else ""
     if has_audio:
         fc_parts.append(f";[0:a]aresample=44100,"
-                        f"aformat=sample_fmts=fltp:channel_layouts=stereo[ar]")
+                        f"aformat=sample_fmts=fltp:channel_layouts=stereo{off_str}[ar]")
         seg_audio = _segment_audio_graph(segs)
         audio_label = "aout" if seg_audio else "ar"
         if seg_audio:
@@ -565,7 +591,7 @@ def _render_single(job_dir: Path, src0: Path, decisions: List[Dict[str, Any]],
 
     cmd = ["ffmpeg", "-y"] + inputs + ["-filter_complex", fc, "-map", "[vout]",
             "-map", f"[{audio_label}]", "-c:a", "aac", "-b:a", "192k"]
-    cmd += ["-t", f"{out_dur:.3f}", "-r", str(s.out_fps)] + _encode_args() + [str(final)]
+    cmd += ["-t", f"{out_dur:.3f}", "-r", str(fps)] + _encode_args() + [str(final)]
     _run_ffmpeg(cmd, progress_cb, out_dur)
     return final
 
@@ -574,7 +600,7 @@ def _render_single(job_dir: Path, src0: Path, decisions: List[Dict[str, Any]],
 def _render_multicam(job_dir: Path, src0: Path, decisions: List[Dict[str, Any]],
                      duration: float, tracks: List[Dict[str, Any]],
                      switches: List[Dict[str, Any]], switch_times: List[float],
-                     final: Path, progress_cb=None) -> Path:
+                     final: Path, progress_cb=None, fps: int = 25) -> Path:
     s = settings()
     switches_sorted = sorted([d for d in switches if 0.5 < d["t"] < duration - 0.5],
                              key=lambda d: d["t"])
@@ -602,7 +628,8 @@ def _render_multicam(job_dir: Path, src0: Path, decisions: List[Dict[str, Any]],
         outf = out_dir_p(job_dir) / f"inter-{ti}.mp4"
         render_track(src, outf, d_list, duration,
                      progress_cb=lambda p, _ti=ti: progress_cb(
-                         (_ti + p) / (len(tracks_used) + 1)) if progress_cb else None)
+                         (_ti + p) / (len(tracks_used) + 1)) if progress_cb else None,
+                     fps=fps)
         inter[ti] = outf
 
     ov_list = [d for d in decisions if d["type"] in
@@ -626,7 +653,7 @@ def _render_multicam(job_dir: Path, src0: Path, decisions: List[Dict[str, Any]],
         if d["type"] == "sticker_anim":
             x, y = _sticker_xy(p.get("path", "rtl"), d["t"], d["dur"])
         elif d["type"] in ("polaroid", "citation_card"):
-            x, y = f"'{_overlay_pos(p.get('pos', 'right'))}'", "'(H-h)/2'"
+            x, y = f"'{_overlay_pos(p.get('pos', 'right'))}'", f"'{_overlay_y_bottom()}'"
         else:
             x, y = "0", "0"
         fc += (f";[{last}][oi{fi}]overlay=x={x}:y={y}:"
@@ -674,7 +701,7 @@ def _render_multicam(job_dir: Path, src0: Path, decisions: List[Dict[str, Any]],
 
     cmd = ["ffmpeg", "-y"] + inputs + ["-filter_complex", fc, "-map", "[vout]",
             "-map", f"[{audio_label}]", "-c:a", "aac", "-b:a", "192k"]
-    cmd += ["-t", f"{duration:.3f}", "-r", str(s.out_fps)] + _encode_args() + [str(final)]
+    cmd += ["-t", f"{duration:.3f}", "-r", str(fps)] + _encode_args() + [str(final)]
     _run_ffmpeg(cmd, progress_cb and (lambda p: progress_cb(0.9 + p * 0.1)), duration)
     return final
 

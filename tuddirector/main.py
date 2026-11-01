@@ -94,6 +94,8 @@ def get_settings() -> dict:
             "vision_concurrency": s.vision_concurrency,
             "director_concurrency": s.director_concurrency,
             "assets_policy": s.assets_policy,
+            "out_fps": s.out_fps,
+            "audio_offset_ms": s.audio_offset_ms,
         },
         "api_log": llm.API_LOG[-30:],
     }
@@ -104,7 +106,7 @@ def put_settings(payload: dict) -> dict:
     allowed = {"vision_model", "director_model", "fal_whisper_model", "fal_image_model",
                "fal_tts_model", "stt_language", "window_len", "window_mode", "window_min",
                "window_max", "frame_fps", "vision_batch", "vision_concurrency",
-               "director_concurrency", "assets_policy"}
+               "director_concurrency", "assets_policy", "out_fps", "audio_offset_ms"}
     data = runtime_overrides_path()
     cur = {}
     if data.exists():

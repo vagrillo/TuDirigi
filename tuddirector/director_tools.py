@@ -24,8 +24,11 @@ TOOLS: Dict[str, Dict[str, Any]] = {
         "default_dur": 3.0, "min_dur": 1.0, "max_dur": 12.0,
     },
     "pan": {
-        "label": "Panoramicа virtuale",
-        "desc": "Deriva l'inquadratura (pan) di dx,dy in unità immagine 0..1.",
+        "label": "Panoramica virtuale",
+        "desc": "Deriva l'inquadratura (pan) di dx,dy in unità immagine 0..1. "
+                "USALO come 'guardarsi attorno': pan ampio e lento quando il parlato "
+                "parla dell'ambiente o di ciò che lo circonda, e per dare respiro "
+                "tra due zoom.",
         "params": {
             "dx": {"type": "number", "min": -0.4, "max": 0.4, "default": 0.1},
             "dy": {"type": "number", "min": -0.4, "max": 0.4, "default": 0.0},

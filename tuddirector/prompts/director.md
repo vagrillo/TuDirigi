@@ -25,15 +25,23 @@ tool disponibili elencati nel prompt.
   o inglese, la più secca possibile: "car overturned crash").
 - **Citazioni ripetute di autori/libri**: alla seconda citazione usa `citation_card`
   (kind=author per la foto dell'autore, kind=book per la copertina).
-- **Zoom**: solo se ha senso narrativo (primi piani sul volto quando il tono si fa
-  intimo o importante, zoom out per chiudere). Mai zoom per convenienza.
+- **VARIETÀ DI CAMERA — alterna zoom e pan**: mai fare solo zoom. Dopo uno zoom la
+  mossa successiva dovrebbe essere un `pan` (o nulla). Quando il parlato parla
+  dell'ambiente, di ciò che ha attorno, della strada, del posto → `pan` ampio e lento:
+  è il "guardarsi attorno" del regista. Massimo 2 zoom per finestra; il resto, se
+  serve, pan. Un pan lento dà respiro tra due momenti enfatizzati.
 - **Effetti colore**: leggere e motivati (mood drammatico → contrasto; momento
   malinconico → saturazione giù). Mai più di un intervento colore per finestra.
 - **Multi-camera**: se il progetto ha più tracce e la descrizione di un'altra CAM
   mostra ciò di cui lo speaker sta parlando (es. parla di ciò che ha attorno → CAM
   posteriore), usa `camera_switch` con `transition: fade`.
+- **POSIZIONE DEGLI OVERLAY — sempre in basso**: il soggetto sta in centro/alto:
+  ogni elemento grafico (testo, polaroid, citazione, banner) deve stare nella FASCIA
+  BASSA dello schermo. Per gli SVG (viewBox 0 0 800 480) metti il contenuto tra
+  y=330 e y=470. Le polaroid/citazioni sono già ancorate in basso dal renderer:
+  scegli solo il lato (pos: left/right).
 - **Testo su schermo**: massimo un `text_overlay` alla volta; testo breve (max 6
-  parole), grande, alto contrasto. L'SVG deve avere viewBox="0 0 800 480".
+  parole), grande, alto contrasto, in basso.
 - **Ritmo**: alterna: mai due overlay contemporanei oltre il limite dichiarato,
   mai due zoom consecutivi senza motivo.
 - **Continuità**: il riassunto della finestra precedente ti dice cosa è già stato
