@@ -147,6 +147,8 @@ async function openJob(id) {
   $("#studioEmpty").classList.add("hidden");
   $("#studio").classList.remove("hidden");
   state.jobId = id;
+  state.studioSig = null;
+  state.lastRenderKey = null;
   state.logOpen = false;
   $("#logWindow").textContent = "apri il log per vedere la storia di esecuzione…";
   await refreshJob();
@@ -172,7 +174,7 @@ function renderStudio(j) {
   if (sel.options.length !== state.skills.length) fillSkillSelect(sel);
   sel.value = j.skill || "base";
 
-  // stages
+  // stages: sempre aggiornati (legggeri)
   $("#stageList").innerHTML = Object.entries(j.stages).map(([id, st]) => `
     <div class="stage ${st.status}">
       <span class="s-name">${id}</span>
@@ -181,38 +183,54 @@ function renderStudio(j) {
     </div>`).join("");
   if (j.error) $("#stageList").innerHTML += `<p class="hint" style="color:var(--err)">⚠ ${esc(j.error)}</p>`;
 
-  // transcript
-  const segs = (j.transcript && j.transcript.segments) || [];
-  $("#transcript").innerHTML = segs.length ? segs.map(s =>
-    `<div class="seg"><span class="tc">${fmtT(s.start)}–${fmtT(s.end)}</span>${esc(s.text)}</div>`).join("")
-    : "<em class='hint'>in attesa trascrizione…</em>";
+  // contenuto pesante: ricostruito SOLO se cambia davvero. Il polling ogni 2,5s
+  // non deve distruggere input/checkbox/player mentre l'utente lavora.
+  const sig = JSON.stringify([
+    j.windows, (j.transcript || {}).segments || [],
+    (j.captions || []).length, j.tracks?.length, j.output, j.render_id,
+  ]);
+  const contentChanged = sig !== state.studioSig;
+  state.studioSig = sig;
 
-  // frames
-  const caps = j.captions || [];
-  $("#frameStrip").innerHTML = caps.length ? caps.map(c => `
-    <figure>
-      <img src="media/jobs/${j.id}/frames/track-${c.track ?? 0}/f${String(Math.floor(c.t)).padStart(6, "0")}.jpg"
-           onerror="this.style.opacity=.15" loading="lazy">
-      <figcaption><span class="tc">${fmtT(c.t)}${j.tracks.length > 1 ? ` C${c.track}` : ""}</span> ${esc(c.caption)}</figcaption>
-    </figure>`).join("") : "<em class='hint'>in attesa descrizioni…</em>";
+  if (contentChanged) {
+    // transcript
+    const segs = (j.transcript && j.transcript.segments) || [];
+    $("#transcript").innerHTML = segs.length ? segs.map(s =>
+      `<div class="seg"><span class="tc">${fmtT(s.start)}–${fmtT(s.end)}</span>${esc(s.text)}</div>`).join("")
+      : "<em class='hint'>in attesa trascrizione…</em>";
 
-  renderTimeline(j);
-  renderWindows(j);
+    // frames
+    const caps = j.captions || [];
+    $("#frameStrip").innerHTML = caps.length ? caps.map(c => `
+      <figure>
+        <img src="media/jobs/${j.id}/frames/track-${c.track ?? 0}/f${String(Math.floor(c.t)).padStart(6, "0")}.jpg"
+             onerror="this.style.opacity=.15" loading="lazy">
+        <figcaption><span class="tc">${fmtT(c.t)}${j.tracks.length > 1 ? ` C${c.track}` : ""}</span> ${esc(c.caption)}</figcaption>
+      </figure>`).join("") : "<em class='hint'>in attesa descrizioni…</em>";
 
-  // output: versione render per evitare confusioni vecchio/nuovo (cache-busting)
-  const card = $("#outputCard");
-  if (j.output) {
-    const v = j.render_id || "x";
-    const url = `media/jobs/${j.id}/${j.output}?v=${v}`;
-    $("#outVideo").src = url;
-    $("#outDownload").href = url;
-    $("#outDownload").classList.remove("hidden");
-    const rends = j.renders || [];
-    $("#outputCard h3").textContent = `Output — render ${rends.length}` +
-      (rends.length ? ` (ultimo: render_id ${v}, run #${rends[rends.length - 1].run})` : "");
-  } else {
-    $("#outVideo").removeAttribute("src");
-    $("#outDownload").classList.add("hidden");
+    renderTimeline(j);
+    renderWindows(j);
+  }
+
+  // output: tocca il player SOLO quando cambia il render (altrimenti ricaricherebbe
+  // il video ad ogni poll — il "refresh continuo" legato al player)
+  const rkey = j.output ? (j.render_id || "x") : null;
+  if (rkey !== state.lastRenderKey) {
+    state.lastRenderKey = rkey;
+    if (j.output) {
+      const url = `media/jobs/${j.id}/${j.output}?v=${rkey}`;
+      if ($("#outVideo").src !== location.origin + "/" + url &&
+          !$("#outVideo").src.endsWith(url))
+        $("#outVideo").src = url;
+      $("#outDownload").href = url;
+      $("#outDownload").classList.remove("hidden");
+      const rends = j.renders || [];
+      $("#outputCard h3").textContent = `Output — render ${rends.length}` +
+        (rends.length ? ` (ultimo: render_id ${rkey}, run #${rends[rends.length - 1].run})` : "");
+    } else {
+      $("#outVideo").removeAttribute("src");
+      $("#outDownload").classList.add("hidden");
+    }
   }
   if (state.logOpen) loadJobLog(false);
 }
@@ -236,6 +254,10 @@ function renderWindows(j) {
   const wins = j.windows || [];
   const el = $("#windows");
   if (!wins.length) { el.innerHTML = "<em class='hint'>il regista non ha ancora deciso…</em>"; return; }
+  // preserva lo stato dell'utente attraverso il rebuild
+  const checkedBefore = $$(".merge-check:checked").map(c => c.dataset.wid);
+  const nlBefore = {};
+  $$(".nl-input").forEach(i => nlBefore[i.id] = i.value);
   el.innerHTML = wins.map(w => `
     <div class="window" data-wid="${w.window_id}">
       <div class="w-head">
@@ -266,6 +288,12 @@ function renderWindows(j) {
         <button id="nlbtn-${w.window_id}" class="nl-btn" data-wid="${w.window_id}">✎ Applica</button>
       </div>
     </div>`).join("");
+  $$(".merge-check").forEach(c => {
+    if (checkedBefore.includes(c.dataset.wid)) c.checked = true;
+  });
+  $$(".nl-input").forEach(i => {
+    if (nlBefore[i.id]) i.value = nlBefore[i.id];
+  });
   $$(".redo-btn").forEach(b => b.onclick = () => redoWindow(b.dataset.wid));
   $$(".prev-btn").forEach(b => b.onclick = () => {
     $$(".window").forEach(el => el.classList.remove("previewing"));
