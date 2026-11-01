@@ -174,3 +174,7 @@ footer { text-align: center; color: var(--muted); font-size: 12px; padding: 18px
 .nl-input { font-size: 12px; }
 .nl-btn { font-size: 12px; padding: 5px 10px; }
 .merge-check { width: 15px; height: 15px; accent-color: var(--accent); }
+.prev-btn { font-size: 11px; padding: 4px 9px; color: var(--accent2);
+  border-color: var(--accent2); }
+.window.previewing { border-color: var(--accent2);
+  box-shadow: 0 0 0 1px var(--accent2); }

@@ -244,6 +244,9 @@ function renderWindows(j) {
         <span class="w-id">${w.window_id}${w.merged_from ? " ⧉" : ""} · ${fmtT(w.t_start)}–${fmtT(w.t_end)}</span>
         <span class="w-mood">mood: ${esc(w.mood || "—")} ${w.engine === "mock" ? "· [mock]" : ""}${w.edited ? " · ✎" : ""}</span>
         <span style="flex:1"></span>
+        <button class="prev-btn" data-wid="${w.window_id}"
+                data-t0="${w.t_start}" data-dur="${Math.max(1, w.t_end - w.t_start)}"
+                title="preview 400px di questo spezzone">⚡ preview</button>
         <button class="redo-btn" data-wid="${w.window_id}">↻ redo</button>
       </div>
       <div class="w-summary">${esc(w.summary || "")}</div>
@@ -264,6 +267,11 @@ function renderWindows(j) {
       </div>
     </div>`).join("");
   $$(".redo-btn").forEach(b => b.onclick = () => redoWindow(b.dataset.wid));
+  $$(".prev-btn").forEach(b => b.onclick = () => {
+    $$(".window").forEach(el => el.classList.remove("previewing"));
+    b.closest(".window").classList.add("previewing");
+    startPreview(+b.dataset.t0, +b.dataset.dur, b.dataset.wid);
+  });
   $$(".merge-check").forEach(c => c.onchange = updateMergeBar);
   $$(".nl-btn").forEach(b => b.onclick = () => nlEditWindow(b.dataset.wid));
   $$(".nl-input").forEach(i => i.onkeydown = e => {
@@ -291,11 +299,12 @@ async function redoWindow(wid) {
 }
 
 /* ---------------------------------------------------------------- preview */
-async function startPreview() {
-  const t0 = parseFloat($("#prevStart").value || 0);
-  const dur = parseFloat($("#prevDur").value || 20);
+async function startPreview(t0Arg, durArg, label) {
+  const t0 = t0Arg !== undefined ? t0Arg : parseFloat($("#prevStart").value || 0);
+  const dur = durArg !== undefined ? durArg : parseFloat($("#prevDur").value || 20);
   const st = $("#prevStatus");
-  st.textContent = "generazione preview…";
+  st.textContent = label ? `preview ${label}…` : "generazione preview…";
+  state.previewWindow = label || null;
   try {
     await api(`jobs/${state.jobId}/preview`, {method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -307,6 +316,8 @@ async function startPreview() {
       if (ps.status === "done") {
         clearInterval(iv);
         $("#prevVideo").src = `media/jobs/${state.jobId}/${ps.message}?v=${Date.now()}`;
+        $("#prevLabel").textContent = state.previewWindow
+          ? `Preview dello spezzone ${state.previewWindow}` : "Preview";
         $("#prevBox").classList.remove("hidden");
         st.textContent = "✓ preview pronta";
       } else if (ps.status === "error") {
