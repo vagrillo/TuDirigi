@@ -97,6 +97,8 @@ class JobStore:
             return job
 
     def stage_start(self, job_id: str, stage: str, message: str = "") -> None:
+        from . import joblog
+        joblog.log(job_id, f"▶ avvio stage: {message or stage}", "info", stage)
         with self._lock:
             job = self.get(job_id)
             if job is None:
@@ -108,7 +110,15 @@ class JobStore:
             job["status"] = "running"
             self.save(job)
 
-    def stage_progress(self, job_id: str, stage: str, progress: float, message: str = "") -> None:
+    def stage_progress(self, job_id: str, stage: str, progress: float, message: str = "",
+                       quiet: bool = False) -> None:
+        from . import joblog
+        if not quiet:
+            prev = self.get(job_id)
+            prev_p = (prev or {}).get("stages", {}).get(stage, {}).get("progress", 0.0)
+            if int(progress * 10) > int(prev_p * 10) or message:
+                joblog.log(job_id, message or f"avanzamento {progress:.0%}", "info", stage,
+                           {"progress": round(progress, 3)})
         with self._lock:
             job = self.get(job_id)
             if job is None:
@@ -123,6 +133,8 @@ class JobStore:
             self.save(job)
 
     def stage_done(self, job_id: str, stage: str, message: str = "") -> None:
+        from . import joblog
+        joblog.log(job_id, f"✓ stage completato: {message or stage}", "info", stage)
         with self._lock:
             job = self.get(job_id)
             if job is None:
@@ -134,6 +146,8 @@ class JobStore:
             self.save(job)
 
     def stage_fail(self, job_id: str, stage: str, error: str) -> None:
+        from . import joblog
+        joblog.log(job_id, f"✗ stage fallito: {error[:400]}", "error", stage)
         with self._lock:
             job = self.get(job_id)
             if job is None:

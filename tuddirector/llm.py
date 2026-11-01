@@ -34,6 +34,19 @@ def _record(entry: Dict[str, Any]) -> None:
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:
         pass
+    # log per-job (se il job corrente è impostato dalla pipeline)
+    from . import joblog
+    jid = joblog.current()
+    if jid:
+        kind = entry.get("kind", "chat")
+        model = entry.get("model", "?")
+        tok = f", tok p:{entry.get('prompt_tokens') or '–'} c:{entry.get('completion_tokens') or '–'}"
+        if entry.get("ok"):
+            joblog.info(jid, f"LLM {kind} ok — {model}{tok}, {entry.get('latency', 0)}s",
+                        "llm", {k: v for k, v in entry.items() if k not in ("t",)})
+        else:
+            joblog.error(jid, f"LLM {kind} ERRORE — {model}: {entry.get('error', '')[:300]}",
+                         "llm")
 
 
 def available() -> bool:
@@ -82,6 +95,9 @@ def chat(messages: List[Dict[str, Any]], model: Optional[str] = None,
                 time.sleep(3 + attempt * 4)
                 continue
             if r.status_code >= 400:
+                _record({"t": time.time(), "model": model, "latency": round(time.time() - t0, 2),
+                         "kind": "structured" if json_schema else "chat", "ok": False,
+                         "error": f"{r.status_code}: {r.text[:200]}"})
                 raise LLMError(f"OpenRouter {r.status_code}: {r.text[:300]}")
             data = r.json()
             msg = (data.get("choices") or [{}])[0].get("message", {})
@@ -110,4 +126,7 @@ def chat(messages: List[Dict[str, Any]], model: Optional[str] = None,
         except requests.RequestException as e:
             last_err = str(e)[:300]
             time.sleep(2 + attempt * 3)
+    _record({"t": time.time(), "model": model, "latency": None,
+             "kind": "structured" if json_schema else "chat", "ok": False,
+             "error": f"irraggiungibile dopo {retries + 1} tentativi: {last_err}"})
     raise LLMError(f"OpenRouter non raggiungibile: {last_err}")

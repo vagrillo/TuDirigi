@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from . import joblog
 from .config import settings
 
 log = logging.getLogger("tuddirector.tts")
@@ -68,12 +69,16 @@ def generate_narration(text: str, dest: Path, speed: float = 1.0,
     """Genera il clip TTS; in mock (o su errore) produce silenzio per non bloccare."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     s = settings()
+    jid = joblog.current()
+    joblog.info(jid, f"genero voce narrante: «{text[:60]}»", "tts")
     if s.fal_key:
         if _fal_tts(text, dest, speed):
+            joblog.info(jid, f"voce generata con {s.fal_tts_model}", "tts")
             return dest
-        log.warning("TTS fal fallito per '%s…' — uso silenzio", text[:40])
+        joblog.warn(jid, f"TTS {s.fal_tts_model} fallito — uso silenzio", "tts")
     if not _mock_silence(est_duration, dest):
         return None
+    joblog.info(jid, "clip silenzio (mock) generato", "tts")
     return dest
 
 

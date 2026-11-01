@@ -6,11 +6,13 @@ Ogni stadio aggiorna lo stato su disco (job.json) ed è riavviabile.
 from __future__ import annotations
 
 import logging
+import time
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List
 
 from . import assets as assets_mod
+from . import joblog
 from . import director, llm, media, render, skills as skills_mod, stt as stt_mod, vision as vision_mod
 from .config import apply_runtime_overrides, settings
 from .jobs import STORE
@@ -38,6 +40,11 @@ def _run(job_id: str) -> None:
     if job is None:
         return
     STORE.register_thread(job_id)
+    tok = joblog.set_current(job_id)
+    run_n = int(job.get("run_count") or 0) + 1
+    STORE.update(job_id, run_count=run_n)
+    joblog.info(job_id, f"═▶ RUN #{run_n} avviato — skill: {job.get('skill')}, "
+                        f"tracce: {len(job.get('tracks', []))}", "pipeline")
     try:
         job_dir = STORE.job_dir(job_id)
 
@@ -112,7 +119,8 @@ def _run(job_id: str) -> None:
                 frames,
                 progress_cb=lambda p, _ti=ti: STORE.stage_progress(
                     job_id, "vision", (_ti + p) / len(frames_by_track),
-                    f"track-{_ti} in corso"))
+                    f"track-{_ti} in corso"),
+                job_id=job_id)
             for c in caps:
                 c["track"] = ti
             captions_by_track[ti] = caps
@@ -140,11 +148,18 @@ def _run(job_id: str) -> None:
                 job_dir, win, transcript, all_captions, sk, prev_summary,
                 duration, len(tracks_meta), user_note=note, wid=f"w{wi:03d}")
             windows_out.append(wres)
+            joblog.info(job_id, f"finestra {wres['window_id']} "
+                                f"({wres['t_start']:.0f}–{wres['t_end']:.0f}s): "
+                                f"{len(wres.get('decisions', []))} decisioni "
+                                f"[{wres.get('engine')}]", "director",
+                        {"summary": wres.get("summary", ""),
+                         "mood": wres.get("mood", "")})
             prev_summary = wres.get("summary")
             STORE.stage_progress(job_id, "director", (wi + 1) / len(windows_spec),
                                  f"finestra {wi + 1}/{len(windows_spec)}")
         STORE.update(job_id, windows=windows_out, skill_used=sk.get("id"))
         n_dec = sum(len(w.get("decisions", [])) for w in windows_out)
+        _ = n_dec
         STORE.stage_done(job_id, "director", f"{n_dec} decisioni su {len(windows_spec)} finestre")
 
         # ---------------------------------------------------------- 5. assets
@@ -169,20 +184,30 @@ def _run(job_id: str) -> None:
 
         # ---------------------------------------------------------- 7. render
         STORE.stage_start(job_id, "render", "render finale")
+        joblog.info(job_id, f"render ffmpeg: {n_dec} decisioni su {len(windows_spec)} "
+                            f"finestre, out {out_fps}fps", "render")
         job_for_render = dict(STORE.get(job_id) or {})
         job_for_render["_skill_preset"] = sk.get("preset_effects") or {}
         out = render.render_job(job_for_render, job_dir,
                                 progress_cb=lambda p: STORE.stage_progress(
                                     job_id, "render", p, "encoding"))
         _check_cancel(job_id)
-        STORE.update(job_id, output="output/final.mp4", status="done", stage=None, error=None)
+        render_id = str(int(time.time()))
+        renders = list((STORE.get(job_id) or {}).get("renders") or [])
+        renders.append({"id": render_id, "run": run_n,
+                        "decisions": n_dec, "windows": len(windows_spec)})
+        STORE.update(job_id, output="output/final.mp4", status="done", stage=None,
+                     error=None, render_id=render_id, renders=renders[-10:])
         STORE.stage_done(job_id, "render", "completato")
+        joblog.info(job_id, f"═✛ RUN #{run_n} COMPLETATO — output/final.mp4 "
+                            f"(render_id {render_id})", "render")
         log.info("job %s completato: %s", job_id, out)
     except InterruptedError:
         STORE.update(job_id, status="cancelled")
         log.info("job %s annullato", job_id)
     finally:
         STORE.unregister_thread(job_id)
+        joblog.reset_current(tok)
 
 
 def redo_window(job_id: str, window_id: str, note: str | None) -> Dict[str, Any]:
@@ -190,6 +215,15 @@ def redo_window(job_id: str, window_id: str, note: str | None) -> Dict[str, Any]
     job = STORE.get(job_id)
     if job is None:
         raise ValueError("job non trovato")
+    tok = joblog.set_current(job_id)
+    try:
+        return _redo_window(job_id, window_id, note, job)
+    finally:
+        joblog.reset_current(tok)
+
+
+def _redo_window(job_id: str, window_id: str, note: str | None,
+                 job: Dict[str, Any]) -> Dict[str, Any]:
     job_dir = STORE.job_dir(job_id)
     s = apply_runtime_overrides()
     sk = skills_mod.resolve(job.get("skill"))
@@ -197,6 +231,8 @@ def redo_window(job_id: str, window_id: str, note: str | None) -> Dict[str, Any]
     captions = job.get("captions", [])
     n_tracks = len(job.get("tracks", [])) or 1
     duration = min(t["duration"] for t in job["tracks"])
+    joblog.info(job_id, f"redo regia su {window_id}" +
+                (f" con nota utente: «{note[:120]}»" if note else ""), "director")
     win = None
     for w in job.get("windows", []):
         if w["window_id"] == window_id:

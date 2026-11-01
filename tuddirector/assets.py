@@ -16,6 +16,7 @@ from typing import Optional
 
 import requests
 
+from . import joblog
 from .config import settings
 
 log = logging.getLogger("tuddirector.assets")
@@ -39,7 +40,10 @@ def _dl(url: str, dest: Path, min_bytes: int = 8000) -> bool:
             return False
         dest.write_bytes(r.content)
         if not _is_meaningful_image(dest):
-            return False  # immagine vuota/bianca/uniforme → prova la fonte successiva
+            joblog.info(joblog.current(),
+                        "immagine scartata (vuota/uniforme) — provo la successiva",
+                        "assets", {"url": url[:120]})
+            return False
         return True
     except requests.RequestException:
         return False
@@ -197,8 +201,15 @@ def find_image(query: str, out_path: Path, kind: str = "fact",
             ok = placeholder_image(q, out_path)
         if ok:
             log.info("asset ok via %s per '%s'", method, q)
+            joblog.info(joblog.current(), f"immagine trovata per «{q}» — fonte: {method}",
+                        "assets", {"query": q, "kind": kind, "source": method,
+                                   "file": out_path.name})
             return out_path
+        joblog.info(joblog.current(), f"nessun risultato da {method} per «{q}»",
+                    "assets", {"query": q, "source": method})
         time.sleep(0.3)
+    joblog.warn(joblog.current(), f"NESSUNA immagine per «{q}» — decisione senza asset",
+                "assets", {"query": q})
     return None
 
 

@@ -6,6 +6,7 @@ import logging
 import re
 import shutil
 import threading
+import time
 from pathlib import Path
 from typing import List, Optional
 
@@ -207,6 +208,16 @@ def get_job(job_id: str) -> dict:
     return job
 
 
+@app.get("/api/jobs/{job_id}/log")
+def get_job_log(job_id: str, level: str = "info", limit: int = 2000) -> dict:
+    if not _SAFE_ID.match(job_id):
+        raise HTTPException(400, "id non valido")
+    if STORE.get(job_id) is None:
+        raise HTTPException(404, "job non trovato")
+    from . import joblog
+    return {"log": joblog.read(job_id, limit=min(5000, max(50, limit)), level=level)}
+
+
 @app.post("/api/jobs/{job_id}/run")
 def run_job(job_id: str, payload: Optional[dict] = None) -> dict:
     job = STORE.get(job_id)
@@ -263,7 +274,12 @@ def render_only(job_id: str) -> dict:
             STORE.stage_start(job_id, "render", "render manuale")
             _r.render_job(job, job_dir, progress_cb=lambda p: STORE.stage_progress(
                 job_id, "render", p, "encoding"))
-            STORE.update(job_id, output="output/final.mp4", error=None)
+            render_id = str(int(time.time()))
+            renders = list((STORE.get(job_id) or {}).get("renders") or [])
+            renders.append({"id": render_id, "run": job.get("run_count") or 0,
+                            "decisions": len(flat), "windows": len(job.get("windows", []))})
+            STORE.update(job_id, output="output/final.mp4", error=None,
+                         render_id=render_id, renders=renders[-10:])
             STORE.stage_done(job_id, "render", "render manuale completato")
         except Exception as e:
             log.exception("render manuale fallito")
@@ -284,7 +300,11 @@ def media_file(job_id: str, path: str) -> FileResponse:
         raise HTTPException(404, "file non trovato")
     media_types = {".mp4": "video/mp4", ".jpg": "image/jpeg", ".png": "image/png",
                    ".wav": "audio/wav", ".svg": "image/svg+xml", ".json": "application/json"}
-    return FileResponse(target, media_type=media_types.get(target.suffix, "application/octet-stream"))
+    # output dinamici: mai cache del browser (un ri-render non deve mostrare il vecchio)
+    nocache = ("output", "thumb")
+    headers = {"Cache-Control": "no-store"} if any(p in path for p in nocache) else {}
+    return FileResponse(target, media_type=media_types.get(target.suffix,
+                        "application/octet-stream"), headers=headers)
 
 
 @app.exception_handler(Exception)

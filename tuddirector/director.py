@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from . import llm
+from . import joblog, llm
 from .config import PROMPTS_DIR, settings
 from .director_tools import (director_json_schema, registry_for_prompt, validate_decision)
 from .stt import segments_in_window
@@ -271,17 +272,34 @@ def direct_window(job_dir: Any, window: Tuple[float, float],
     t0, t1 = window
     allowed = skill.get("tools") or []
     wid = wid or f"w{int(t0 // s.window_len):03d}"
+    job_id = Path(job_dir).name if job_dir else None
 
     result: Dict[str, Any] = {
         "window_id": wid, "t_start": t0, "t_end": t1,
         "summary": "", "mood": "neutro", "decisions": [], "engine": "mock",
     }
 
+    def _validate_all(decisions_in: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        out = []
+        for d in decisions_in:
+            rej: Dict[str, str] = {}
+            v = validate_decision(d, t0, t1, allowed, skill["limits"]["max_zoom_strength"],
+                                  n_tracks > 1, video_duration, n_tracks, reject=rej)
+            if v:
+                out.append(v)
+                pshort = {k: x for k, x in v["params"].items() if not k.startswith("_")}
+                joblog.info(job_id, f"decisione accettata: {v['type']} @ {v['t']}s "
+                                    f"(dur {v['dur']}s)", "director",
+                            {"params": pshort, "reason": v.get("reason", "")})
+            else:
+                joblog.warn(job_id, f"decisione scartata: {rej.get('type', '?')} — "
+                                    f"{rej.get('reason', '?')}", "director",
+                            {"raw": str(d)[:200]})
+        return out
+
     if not llm.available():
         decisions = _mock_decisions(window, transcript, n_tracks, skill)
-        decs = [d for d in (validate_decision(
-            d, t0, t1, allowed, skill["limits"]["max_zoom_strength"], n_tracks > 1,
-            video_duration, n_tracks) for d in decisions) if d]
+        decs = _validate_all(decisions)
         avoid_subject(decs, captions, window)
         result.update(summary="Mock: finestra demo con decisioni guidate da keyword.",
                       mood="neutro", decisions=decs)
@@ -303,13 +321,7 @@ def direct_window(job_dir: Any, window: Tuple[float, float],
                     parsed = __import__("json").loads(m[b:m.rfind("}") + 1])
                 except Exception:
                     parsed = {}
-        decisions_in = parsed.get("decisions") or []
-        decs = []
-        for d in decisions_in:
-            v = validate_decision(d, t0, t1, allowed, skill["limits"]["max_zoom_strength"],
-                                  n_tracks > 1, video_duration, n_tracks)
-            if v:
-                decs.append(v)
+        decs = _validate_all(parsed.get("decisions") or [])
         avoid_subject(decs, captions, window)
         result.update(summary=str(parsed.get("summary", ""))[:500],
                       mood=parsed.get("mood") if parsed.get("mood") in MOODS else "neutro",
@@ -318,10 +330,7 @@ def direct_window(job_dir: Any, window: Tuple[float, float],
     except Exception as e:
         log.error("regista LLM fallita su %s: %s — fallback mock", wid, e)
         result["error"] = str(e)[:300]
-        decs = _mock_decisions(window, transcript, n_tracks, skill)
-        decs = [d for d in (validate_decision(
-            d, t0, t1, allowed, skill["limits"]["max_zoom_strength"], n_tracks > 1,
-            video_duration, n_tracks) for d in decs) if d]
+        decs = _validate_all(_mock_decisions(window, transcript, n_tracks, skill))
         avoid_subject(decs, captions, window)
         result["decisions"] = decs
     return result

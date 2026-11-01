@@ -146,6 +146,8 @@ async function openJob(id) {
   $("#studioEmpty").classList.add("hidden");
   $("#studio").classList.remove("hidden");
   state.jobId = id;
+  state.logOpen = false;
+  $("#logWindow").textContent = "apri il log per vedere la storia di esecuzione…";
   await refreshJob();
   clearInterval(state.stTimer);
   state.stTimer = setInterval(() => {
@@ -196,17 +198,22 @@ function renderStudio(j) {
   renderTimeline(j);
   renderWindows(j);
 
-  // output
+  // output: versione render per evitare confusioni vecchio/nuovo (cache-busting)
   const card = $("#outputCard");
   if (j.output) {
-    const url = `media/jobs/${j.id}/${j.output}`;
+    const v = j.render_id || "x";
+    const url = `media/jobs/${j.id}/${j.output}?v=${v}`;
     $("#outVideo").src = url;
     $("#outDownload").href = url;
     $("#outDownload").classList.remove("hidden");
+    const rends = j.renders || [];
+    $("#outputCard h3").textContent = `Output — render ${rends.length}` +
+      (rends.length ? ` (ultimo: render_id ${v}, run #${rends[rends.length - 1].run})` : "");
   } else {
     $("#outVideo").removeAttribute("src");
     $("#outDownload").classList.add("hidden");
   }
+  if (state.logOpen) loadJobLog(false);
 }
 
 function renderTimeline(j) {
@@ -268,6 +275,42 @@ async function redoWindow(wid) {
     });
     await refreshJob();
   } catch (e) { alert("redo fallito: " + e.message); }
+}
+
+/* ---------------------------------------------------------------- log */
+async function loadJobLog(scroll) {
+  if (!state.jobId) return;
+  try {
+    const lvl = $("#logFilter").value;
+    const data = await api(`jobs/${state.jobId}/log?level=${lvl}&limit=2000`);
+    const el = $("#logWindow");
+    const entries = data.log || [];
+    // contatore + raggruppamento per run
+    const runs = [...new Set(entries.map(e => e.run).filter(Boolean))];
+    const nErr = entries.filter(e => e.level === "error").length;
+    const nWarn = entries.filter(e => e.level === "warn").length;
+    $("#logStats").textContent = `${entries.length} voci · ${runs.length ? runs.length + " run" : ""} `
+      + `· ${nWarn} ⚠ ${nErr} ✗`;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    el.innerHTML = entries.map(e => {
+      const t = new Date(e.t * 1000).toLocaleTimeString("it-IT");
+      const dat = e.data ? `<span class="ldata">${esc(JSON.stringify(e.data).slice(0, 160))}</span>` : "";
+      return `<div class="logline2 ${e.level}">
+        <span class="lt">${t}</span>
+        <span class="lv ${e.level}">${e.level === "info" ? "info" : e.level === "warn" ? "⚠" : "✗"}</span>
+        <span class="lstage">${esc(e.stage || "")}</span>
+        <span class="lmsg">${esc(e.msg)}</span>${dat}</div>`;
+    }).join("");
+    if (scroll || atBottom) el.scrollTop = el.scrollHeight;
+  } catch (e) { $("#logWindow").textContent = "log non disponibile: " + e.message; }
+}
+
+function initLog() {
+  $("#logRefresh").onclick = () => loadJobLog(true);
+  $("#logFilter").onchange = () => loadJobLog(true);
+  $("#logWindow").addEventListener("click", () => {
+    if (!state.logOpen) { state.logOpen = true; loadJobLog(true); }
+  });
 }
 
 function initStudio() {
@@ -386,7 +429,7 @@ function initSettings() {
 
 /* ---------------------------------------------------------------- boot */
 async function boot() {
-  initUpload(); initStudio(); initSkills(); initSettings();
+  initUpload(); initStudio(); initSkills(); initSettings(); initLog();
   $$("nav button").forEach(b => b.onclick = () => show(b.dataset.view));
   try {
     const data = await api("skills");

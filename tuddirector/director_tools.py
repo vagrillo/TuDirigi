@@ -239,20 +239,33 @@ def _clamp(v: float, lo: float, hi: float) -> float:
 
 def validate_decision(dec: Dict[str, Any], window_t0: float, window_t1: float,
                       allowed: List[str], max_zoom: float, multi_track: bool,
-                      video_duration: float, n_tracks: int) -> Optional[Dict[str, Any]]:
-    """Valida una decisione del LLM; ritorna la decisione clampata o None se scartata."""
+                      video_duration: float, n_tracks: int,
+                      reject: Optional[Dict[str, str]] = None) -> Optional[Dict[str, Any]]:
+    """Valida una decisione del LLM; ritorna la decisione clampata o None se scartata.
+
+    Se `reject` (dict) è passato, viene popolato con {type, reason} quando scarta.
+    """
+    def _rej(reason: str) -> None:
+        if reject is not None:
+            reject["reason"] = reason
+            reject["type"] = str(dec.get("type", "?")) if isinstance(dec, dict) else "?"
+
     if not isinstance(dec, dict):
+        _rej("decisione non è un oggetto")
         return None
     dtype = str(dec.get("type", "")).strip()
     if dtype not in allowed:
+        _rej(f"tipo '{dtype}' non consentito dalla skill")
         return None
     tool = TOOLS[dtype]
     if dtype == "camera_switch" and not multi_track:
+        _rej("camera_switch ma il progetto ha una sola traccia")
         return None
 
     try:
         t = float(dec.get("t", window_t0))
     except (TypeError, ValueError):
+        _rej("tempo 't' non numerico")
         return None
     dur = float(dec.get("dur", tool.get("default_dur", 3.0)) or 0.0)
     if not tool.get("instant"):
@@ -261,6 +274,7 @@ def validate_decision(dec: Dict[str, Any], window_t0: float, window_t1: float,
         dur = 0.0
     # tolleranza overlap: consentito uscire leggermente dalla finestra
     if t < window_t0 - 5.5 or t > window_t1:
+        _rej(f"t={t:.1f}s fuori dalla finestra [{window_t0:.1f}–{window_t1:.1f}]")
         return None
     t = _clamp(t, 0.0, max(0.0, video_duration - max(0.5, dur)))
     if not tool.get("instant"):
@@ -298,6 +312,7 @@ def validate_decision(dec: Dict[str, Any], window_t0: float, window_t1: float,
     # ── parametri obbligatori NON vuoti: mai overlay vuoti a schermo ─────────
     for k, spec in tool["params"].items():
         if spec.get("required") and not str(params.get(k, "")).strip():
+            _rej(f"parametro obbligatorio '{k}' vuoto (mai overlay vuoti)")
             return None
 
     if dtype == "zoom":
@@ -305,13 +320,16 @@ def validate_decision(dec: Dict[str, Any], window_t0: float, window_t1: float,
     if dtype == "camera_switch":
         params["track"] = _clamp(int(params.get("track", 1)), 0, max(0, n_tracks - 1))
         if params["track"] == 0:
-            return None  # switch alla traccia corrente: inutile
+            _rej("camera_switch verso la traccia già attiva")
+            return None
     if dtype == "text_overlay":
         svg = params.get("svg", "")
         if _SVG_OK.search(svg) or not _SVG_OK_TAGS.search(svg):
+            _rej("SVG contiene elementi non consentiti o malformato")
             return None
         if not _svg_has_visible_text(svg):
-            return None  # SVG senza testo visibile → niente banner vuoti
+            _rej("SVG senza testo visibile (niente banner vuoti)")
+            return None
         if len(svg) > 20000:
             svg = svg[:20000]
             params["svg"] = svg

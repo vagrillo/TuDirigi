@@ -18,6 +18,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from . import joblog
 from .config import settings
 from .overlay import prepare_overlays
 
@@ -408,6 +409,7 @@ def render_job(job: Dict[str, Any], job_dir: Path, progress_cb=None) -> Path:
     out_dir = job_dir / "output"
     out_dir.mkdir(parents=True, exist_ok=True)
     final = out_dir / "final.mp4"
+    job_id = job.get("id")
     # fps di uscita: per-job (auto = fedele alla sorgente) o da settings
     fps = int(job.get("out_fps") or 0)
     if not fps:
@@ -437,23 +439,28 @@ def render_job(job: Dict[str, Any], job_dir: Path, progress_cb=None) -> Path:
             decisions = [{"type": "effects", "t": 0.0, "dur": duration, "params": base}] + decisions
 
     prepare_overlays(decisions, job_dir)
+    joblog.info(job_id, f"render: {len(decisions)} decisioni, {len(tracks)} traccia/e, "
+                        f"{fps}fps out, finestra {duration:.0f}s → {s.out_w}×{s.out_h}",
+                "render", {"switches": sum(1 for d in decisions if d['type'] == 'camera_switch'),
+                           "overlays": sum(1 for d in decisions if d.get('params', {}).get('_png'))})
 
     switches = [d for d in decisions if d["type"] == "camera_switch"]
     switch_times = sorted(d["t"] for d in switches if 0.5 < d["t"] < duration - 0.5)
     src0 = job_dir / tracks[0]["path"]
 
     if not switch_times:
-        return _render_single(job_dir, src0, decisions, duration, tracks, final,
+        return _render_single(job_id, job_dir, src0, decisions, duration, tracks, final,
                               progress_cb, fps)
 
     # ------- multi-camera: per-traccia intermedi + assemblaggio + overlays
-    return _render_multicam(job_dir, src0, decisions, duration, tracks, switches,
+    return _render_multicam(job_id, job_dir, src0, decisions, duration, tracks, switches,
                             switch_times, final, progress_cb, fps)
 
 
 # ---------------------------------------------------------------- single track
-def _render_single(job_dir: Path, src0: Path, decisions: List[Dict[str, Any]],
-                   duration: float, tracks: List[Dict[str, Any]], final: Path,
+def _render_single(job_id: Optional[str], job_dir: Path, src0: Path,
+                   decisions: List[Dict[str, Any]], duration: float,
+                   tracks: List[Dict[str, Any]], final: Path,
                    progress_cb=None, fps: int = 25) -> Path:
     """Una passata: timeline (slowmo reale) → camera → overlays → audio + narrazioni."""
     s = settings()
@@ -598,12 +605,14 @@ def _render_single(job_dir: Path, src0: Path, decisions: List[Dict[str, Any]],
             "-map", f"[{audio_label}]", "-c:a", "aac", "-b:a", "192k"]
     cmd += ["-t", f"{out_dur:.3f}", "-r", str(fps)] + _encode_args() + [str(final)]
     _run_ffmpeg(cmd, progress_cb, out_dur)
+    joblog.info(job_id, f"render completato: {final.name} ({out_dur:.1f}s, {fps}fps)", "render")
     return final
 
 
 # ---------------------------------------------------------------- multicam
-def _render_multicam(job_dir: Path, src0: Path, decisions: List[Dict[str, Any]],
-                     duration: float, tracks: List[Dict[str, Any]],
+def _render_multicam(job_id: Optional[str], job_dir: Path, src0: Path,
+                     decisions: List[Dict[str, Any]], duration: float,
+                     tracks: List[Dict[str, Any]],
                      switches: List[Dict[str, Any]], switch_times: List[float],
                      final: Path, progress_cb=None, fps: int = 25) -> Path:
     s = settings()
@@ -708,6 +717,7 @@ def _render_multicam(job_dir: Path, src0: Path, decisions: List[Dict[str, Any]],
             "-map", f"[{audio_label}]", "-c:a", "aac", "-b:a", "192k"]
     cmd += ["-t", f"{duration:.3f}", "-r", str(fps)] + _encode_args() + [str(final)]
     _run_ffmpeg(cmd, progress_cb and (lambda p: progress_cb(0.9 + p * 0.1)), duration)
+    joblog.info(job_id, f"render multicam completato: {final.name} ({duration:.1f}s)", "render")
     return final
 
 

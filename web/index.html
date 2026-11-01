@@ -76,6 +76,19 @@
         <div id="timeline" class="timeline"></div>
         <div id="windows" class="windows"></div>
       </div>
+      <div class="card">
+        <div class="row" style="margin-top:0">
+          <h3 style="margin:0;flex:1">📜 Log esecuzione</h3>
+          <select id="logFilter">
+            <option value="info">tutto</option>
+            <option value="warn">solo avvisi</option>
+            <option value="error">solo errori</option>
+          </select>
+          <button id="logRefresh">↻ aggiorna</button>
+          <span id="logStats" class="hint"></span>
+        </div>
+        <div id="logWindow" class="logwindow hint">apri il log per vedere la storia di esecuzione…</div>
+      </div>
       <div class="card" id="outputCard">
         <h3>Output</h3>
         <video id="outVideo" controls></video>

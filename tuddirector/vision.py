@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from . import cache, llm
+from . import cache, joblog, llm
 from .config import PROMPTS_DIR, settings
 
 log = logging.getLogger("tuddirector.vision")
@@ -103,12 +103,15 @@ def _mock_caption(idx_in_batch: int, path: Path) -> Dict[str, Any]:
             "subject_pos": pos}
 
 
-def describe_batch(batch: List[Tuple[float, Path]], model: Optional[str] = None) -> List[Dict[str, Any]]:
+def describe_batch(batch: List[Tuple[float, Path]], model: Optional[str] = None,
+                   job_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """Ritorna una didascalia per ogni frame del batch (stesso ordine).
 
     I frame già in cache (hash del contenuto + modello) non vengono richiesti al modello.
     """
     s = settings()
+    if job_id:
+        joblog.set_current(job_id)
     model = model or s.vision_model
     results: List[Dict[str, Any]] = [None] * len(batch)  # type: ignore[list-item]
     to_ask: List[int] = []
@@ -178,7 +181,8 @@ def describe_frames(frames: List[Tuple[float, Path]],
                     progress_cb: Optional[Callable[[float], None]] = None,
                     model: Optional[str] = None,
                     batch_size: Optional[int] = None,
-                    concurrency: Optional[int] = None) -> List[Dict[str, Any]]:
+                    concurrency: Optional[int] = None,
+                    job_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """Descrive tutti i frame: batching + concorrenza regolabile."""
     s = settings()
     batch_size = batch_size or s.vision_batch
@@ -187,7 +191,7 @@ def describe_frames(frames: List[Tuple[float, Path]],
     out: List[Dict[str, Any]] = []
     done = 0
     with ThreadPoolExecutor(max_workers=concurrency) as ex:
-        futs = {ex.submit(describe_batch, b, model): b for b in batches}
+        futs = {ex.submit(describe_batch, b, model, job_id): b for b in batches}
         for fut in as_completed(futs):
             try:
                 out.extend(fut.result())
