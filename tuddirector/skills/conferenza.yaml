@@ -1,0 +1,25 @@
+name: "Regista — Conferenza / presentazione"
+id: conferenza
+scenario: conferenza
+description: "Talk tecnico: lower third per speaker, card per concetti e fonti, ritmo sobrio."
+system_extra: |
+  Presentazione o conferenza. Regia molto sobria: lower_third per lo speaker e per
+  i concetti principali (max 1 per finestra), citation_card per fonti/libri citati,
+  polaroid raramente. Zoom solo per enfatizzare passaggi chiave. Testo overlay per
+  numeri e date IMPORTANTI citati verbalmente (li copi fedelmente).
+tools:
+  - zoom
+  - effects
+  - text_overlay
+  - citation_card
+  - lower_third
+  - highlight_pulse
+  - narration
+limits:
+  max_simultaneous_overlays: 1
+  max_zoom_strength: 0.25
+  max_decisions: 5
+style:
+  pacing: sobrio
+  tone: info
+preset_effects: {}

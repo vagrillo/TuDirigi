@@ -1,0 +1,28 @@
+# Unit systemd per TuDirector — avvio automatico e riavvio in caso di crash.
+#
+# Installazione:
+#   sudo cp deploy/tuddirector.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now tuddirector
+#
+# Comandi utili:
+#   systemctl status tuddirector      # stato
+#   sudo systemctl restart tuddirector  # riavvio (es. dopo aver cambiato .env)
+#   journalctl -u tuddirector -f      # log live
+
+[Unit]
+Description=TuDirector - regista AI per i tuoi video (porta 18736)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/src/AI/TuDirector
+ExecStart=/usr/bin/env python3 -m tuddirector.main
+Restart=on-failure
+RestartSec=3
+# le chiavi API si leggono da .env nella WorkingDirectory (prefisso TD_)
+Environment=TUDDIRECTOR_ENV=1
+
+[Install]
+WantedBy=multi-user.target

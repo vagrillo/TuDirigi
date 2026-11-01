@@ -1,0 +1,29 @@
+name: "Regista Base"
+id: base
+scenario: base
+description: "Stile di regia universale: supporta il parlato, evidenzia i fatti, ritmo equilibrato."
+system_extra: |
+  Scenario generico. Equilibrio tra regia di camera (zoom/pan) e supporti grafici
+  (polaroid, overlay, citazioni). Quando il parlato chiede attenzione o cita un fatto
+  visibile, supporta sempre con un tool visivo entro 3 secondi dalla frase.
+tools:
+  - zoom
+  - pan
+  - effects
+  - text_overlay
+  - polaroid
+  - citation_card
+  - sticker_anim
+  - lower_third
+  - highlight_pulse
+  - slowmo
+  - narration
+  - camera_switch
+limits:
+  max_simultaneous_overlays: 2
+  max_zoom_strength: 0.4
+  max_decisions: 8
+style:
+  pacing: dinamico
+  tone: neutro
+preset_effects: {}

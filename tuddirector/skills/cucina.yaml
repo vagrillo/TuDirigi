@@ -1,0 +1,28 @@
+name: "Regista — Cucina / ricette"
+id: cucina
+scenario: cucina
+description: "Vlog culinario: close sugli ingredienti, testi con dosi, passaggi chiave."
+system_extra: |
+  Video di cucina. Usa highlight_pulse o zoom sui dettagli operativi (ingredienti,
+  mani, cottura) ESATTAMENTE quando vengono nominati. text_overlay con dosi e
+  temperature citate (max 6 parole). sticker_anim (frecce) per indicare
+  l'ingrediente giusto su schermo. Polaroid solo per piatti leggendari citati.
+tools:
+  - zoom
+  - pan
+  - effects
+  - text_overlay
+  - polaroid
+  - sticker_anim
+  - highlight_pulse
+  - lower_third
+limits:
+  max_simultaneous_overlays: 1
+  max_zoom_strength: 0.3
+  max_decisions: 8
+style:
+  pacing: brillante
+  tone: giocoso
+preset_effects:
+  saturation: 0.12
+  brightness: 0.03

@@ -1,0 +1,28 @@
+name: "Regista — Sport / azione"
+id: sport
+scenario: sport
+description: "Azione e movimento: replay, slowmo sui momenti top, energia nei colori."
+system_extra: |
+  Video sportivo. Usa slowmo (0.5x) sul momento dell'azione decisive citato dallo
+  speaker, highlight_pulse sul soggetto, sticker_anim (frecce/stella) per i punti
+  salienti. Saturazione e contrasto su. text_overlay SOLO per punteggi/risultati.
+tools:
+  - zoom
+  - pan
+  - effects
+  - text_overlay
+  - sticker_anim
+  - highlight_pulse
+  - slowmo
+  - narration
+  - camera_switch
+limits:
+  max_simultaneous_overlays: 1
+  max_zoom_strength: 0.45
+  max_decisions: 8
+style:
+  pacing: energico
+  tone: epico
+preset_effects:
+  saturation: 0.15
+  contrast: 0.08

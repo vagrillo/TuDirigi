@@ -1,0 +1,30 @@
+# ── segreti ────────────────────────────────────────────────────────────
+.env
+.env.local
+*.key
+
+# ── dati di esecuzione (job, upload, cache, log) ───────────────────────
+data/
+!data/.gitkeep
+
+# ── python ─────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# ── editor / OS ────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ── vari ───────────────────────────────────────────────────────────────
+nohup.out
+*.log
+!deploy/*.service

@@ -1,0 +1,33 @@
+obiettivo del progetto è implemetnare un applicaizone web al quale viene uploadato un video,
+il software deve:
+  estrarre l'audio e sottoporre ad un modello AI di S2T per estrarre testo e time code
+
+con cadenza di 1 secondo , estrarre ogni fotogramma dal video ridimensionarlo a 800x480  e passarlo ad un modello IMG2TXT per estrarre la desrfizione di ogni fotogramma
+
+utilizzando le informazioni di ogni  spezzone di 30 secondi composto dal testo relativo e la descrizione del fotogramma decidere le azioni di regia necessarie al filmato ovvero tramite un modello AI llm che ritorna uno structured_oputput json.
+
+-   inquadratura, se il filmato è una persona che sta parlando e il parlato chiede  attenzione o richiede un primopiano più o meno stretto del soggetto, bisogna prevedere che nel video elaborato ci sia una fase di zoom verso il centro indicato dall'analisi dello spezzone
+
+- effetti video come luminosità , saturazione
+
+- mettere in sovraimpressione un testo evidente (quindi il modello dovrà creare un SVG e dire che path deve fare)
+- metter un animazione es Animazioen di un auto che attravera in sovraimpressiono lo schermo da destra a sinistra
+
+- se nel testo si segnala un fatto da evidenziare : esempio nel filmato lo speaker dice di aver visto un auto cappottata, mostrare a video  come una polaroid una foto di un auto cappottata
+
+-  se nel testo lo speaker sta citando ripetutametne un autore o un libro far vedere una foto dell'autore o una foto della copertina del libro presa da internet
+
+etc.. etcc..
+
+- inoltre si potrebbe uploadare una traccia video multipla , es dal cellulare con inquadratura dalle varie fotocamere, in questo caso il modello llm regista deve sapere di avere a disposizione questi tool e utilizzarli ad hoc, se lo speaker parla di aualcosa attorno, si potrebbe fare un fade verso l'inaquadratura della fotocamera posteriore .  (naturalmente se dall'analisi del video della fotocamera posteriore erano emerse cose interessanti)
+
+
+realizza la struttura dell'interfaccia web un server python su port 18736 che risponde anche dietro RP per cui con riferimenti sempre relativi
+e realizza tutto il piano e la pipeline di chiamate dei modelli AI i prompt di base, i tools da realizzare, gli skills editabili per le varie combinazini di regia
+etc...
+es prevedendo vari scenari,
+in macchina
+a piedi,
+etc ..etc..
+
+

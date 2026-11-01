@@ -1,0 +1,32 @@
+name: "Regista — Intervista / speaker fisso"
+id: intervista
+scenario: intervista
+description: "Speaker fermo in campo: primi piani sul volto nei momenti chiave, lower third per il nome, citazioni eleganti."
+system_extra: |
+  Il soggetto parla rivolto alla camera (intervista, vlog, talk). Regia sobria:
+  - zoom in morbido (strength 0.2–0.3) sul volto quando il contenuto si fa intimo o
+    importante; zoom out per concludere.
+  - lower_third all'inizio con nome e ruolo se citati.
+  - citation_card per autori/libri citati (foto autore o copertina).
+  - polaroid solo per fatti fortemente visuali citati dallo speaker.
+  - effetti colore quasi assenti; leggero contrasto nei momenti drammatici.
+  Se ci sono più tracce (es. doppia inquadratura largo/stretto), alterna con
+  camera_switch nei cambi di argomento o di tono.
+tools:
+  - zoom
+  - effects
+  - text_overlay
+  - polaroid
+  - citation_card
+  - lower_third
+  - highlight_pulse
+  - camera_switch
+limits:
+  max_simultaneous_overlays: 1
+  max_zoom_strength: 0.35
+  max_decisions: 6
+style:
+  pacing: posato
+  tone: neutro
+preset_effects:
+  contrast: 0.04

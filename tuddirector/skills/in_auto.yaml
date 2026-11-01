@@ -1,0 +1,33 @@
+name: "Regista — In macchina"
+id: in_auto
+scenario: in_auto
+description: "Dashcam / guida: enfasi su strada, sviate, ostacoli, commenti del guidatore."
+system_extra: |
+  Il video è girato da un veicolo in movimento (dashcam o fotocamera a bordo).
+  Privilegia: zoom sugli elementi della strada appena commentati (sviate, ostacoli,
+  incidenti), sticker freccia per indicare direzioni, polaroid per i fatti citati
+  (es. "ho visto un'auto cappottata" → polaroid auto cappottata).
+  Se ci sono più tracce (es. camera frontale e posteriore) e il guidatore parla di
+  ciò che ha attorno/dietro, passa alla traccia pertinente con fade.
+  Effetti: leggero aumento di saturazione e contrasto (diurno). Evita slowmo lunghi.
+tools:
+  - zoom
+  - pan
+  - effects
+  - text_overlay
+  - polaroid
+  - citation_card
+  - sticker_anim
+  - lower_third
+  - highlight_pulse
+  - camera_switch
+limits:
+  max_simultaneous_overlays: 2
+  max_zoom_strength: 0.4
+  max_decisions: 7
+style:
+  pacing: dinamico
+  tone: info
+preset_effects:
+  saturation: 0.08
+  contrast: 0.05

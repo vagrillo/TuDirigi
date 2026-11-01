@@ -1,0 +1,31 @@
+name: "Regista — Viaggio / natura"
+id: viaggio
+scenario: viaggio
+description: "Panoramiche ampie, paesaggi, luoghi citati. Card informative sui luoghi."
+system_extra: |
+  Video di viaggio. Valorizza le panoramiche: pan lenti e zoom out nelle aperture
+  di scena; zoom solo per dettagli davvero interessanti commentati dallo speaker.
+  Per luoghi/monumenti citati usa text_overlay con il nome del luogo o polaroid
+  storica. Citazioni di autori di viaggio → citation_card.
+  Effetti: saturazione leggermente sopra il naturale, vignette nei momenti epici.
+tools:
+  - zoom
+  - pan
+  - effects
+  - text_overlay
+  - polaroid
+  - citation_card
+  - lower_third
+  - highlight_pulse
+  - narration
+  - camera_switch
+limits:
+  max_simultaneous_overlays: 2
+  max_zoom_strength: 0.4
+  max_decisions: 7
+style:
+  pacing: cinematico
+  tone: epico
+preset_effects:
+  saturation: 0.1
+  contrast: 0.05

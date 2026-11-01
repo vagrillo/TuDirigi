@@ -1,0 +1,31 @@
+name: "Regista — A piedi (città)"
+id: a_piedi
+scenario: a_piedi
+description: "Walk-and-talk urbano: handheld, vetrine, monumenti, persone. Ritmo vivace."
+system_extra: |
+  Video girato camminando in città. Il movimento è parte del racconto: usa pan
+  morbidi per seguire l'ambiente, highlight_pulse su insegne/dettagli commentati.
+  Se lo speaker nomina un monumento, un luogo o un negozio, considera polaroid o
+  zoom. Se cita un autore locale o un libro sulla città, citation_card.
+  Con più tracce (frontale/selfie e posteriore): parla di ciò che ha alle spalle →
+  camera_switch alla CAM posteriore con fade.
+tools:
+  - zoom
+  - pan
+  - effects
+  - text_overlay
+  - polaroid
+  - citation_card
+  - sticker_anim
+  - lower_third
+  - highlight_pulse
+  - camera_switch
+limits:
+  max_simultaneous_overlays: 2
+  max_zoom_strength: 0.35
+  max_decisions: 8
+style:
+  pacing: vivace
+  tone: giocoso
+preset_effects:
+  saturation: 0.1

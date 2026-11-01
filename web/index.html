@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TuDirector — regista AI</title>
+<link rel="stylesheet" href="static/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🎬</text></svg>">
+</head>
+<body>
+<header>
+  <div class="brand">🎬 TuDirector <span class="tag">regista AI</span></div>
+  <nav>
+    <button data-view="projects" class="active">Progetti</button>
+    <button data-view="studio">Studio</button>
+    <button data-view="skills">Skills</button>
+    <button data-view="settings">Impostazioni</button>
+  </nav>
+  <div id="modeBadge" class="badge">…</div>
+</header>
+
+<main>
+  <!-- ============ PROGETTI ============ -->
+  <section id="view-projects" class="view active">
+    <div class="card upload-card">
+      <h2>Nuovo progetto</h2>
+      <p class="hint">Trascina qui 1 video (o più tracce multi-camera: la prima è la principale),
+         scegli lo stile di regia e avvia. Senza chiavi API il sistema gira in <b>mock mode</b>.</p>
+      <div id="dropzone" class="dropzone">
+        <input type="file" id="fileInput" multiple accept="video/*" hidden>
+        <div class="dz-inner">📹 trascina i video qui oppure <button class="linklike" id="pickFiles">scegli file</button></div>
+        <ul id="fileList"></ul>
+      </div>
+      <div class="row">
+        <label>Skill di regia <select id="skillSelect"></select></label>
+        <label>Titolo <input id="jobTitle" type="text" placeholder="es. Viaggio in montagna"></label>
+        <button id="startBtn" class="primary">▶ Avvia pipeline</button>
+      </div>
+      <div id="uploadProgress" class="progress hidden"><div class="bar"></div></div>
+    </div>
+    <div class="card">
+      <h2>Progetti</h2>
+      <div id="jobsList" class="jobs-grid"><em>caricamento…</em></div>
+    </div>
+  </section>
+
+  <!-- ============ STUDIO ============ -->
+  <section id="view-studio" class="view">
+    <div id="studioEmpty" class="card"><p>Apri un progetto dalla lista o caricane uno nuovo.</p></div>
+    <div id="studio" class="hidden">
+      <div class="studio-head">
+        <h2 id="stTitle">—</h2>
+        <div class="row">
+          <select id="stSkill"></select>
+          <button id="stRerun">↻ Riesegui regia</button>
+          <button id="stRender" class="primary">🎞 Render finale</button>
+          <button id="stCancel">✕ Annulla</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Pipeline</h3>
+        <div id="stageList" class="stages"></div>
+      </div>
+      <div class="grid2">
+        <div class="card">
+          <h3>Trascrizione</h3>
+          <div id="transcript" class="transcript"></div>
+        </div>
+        <div class="card">
+          <h3>Fotogrammi analizzati</h3>
+          <div id="frameStrip" class="framestrip"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Timeline regia</h3>
+        <div id="timeline" class="timeline"></div>
+        <div id="windows" class="windows"></div>
+      </div>
+      <div class="card" id="outputCard">
+        <h3>Output</h3>
+        <video id="outVideo" controls></video>
+        <a id="outDownload" class="button" download>⬇ Scarica MP4</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SKILLS ============ -->
+  <section id="view-skills" class="view">
+    <div class="grid2">
+      <div class="card">
+        <h2>Skills di regia</h2>
+        <p class="hint">Ogni skill configura il "personaggio" del regista per uno scenario
+          (in macchina, a piedi, intervista…): prompt addizionale, tool consentiti, limiti.</p>
+        <div id="skillsList"></div>
+        <button id="newSkill">+ Nuova skill</button>
+      </div>
+      <div class="card">
+        <h2>Editor</h2>
+        <input id="skId" placeholder="id (es. Sci)"><br>
+        <textarea id="skYaml" rows="26" spellcheck="false" placeholder="name: …"></textarea>
+        <div class="row">
+          <button id="skSave" class="primary">Salva</button>
+          <button id="skDelete" class="danger">Elimina</button>
+          <span id="skMsg"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ IMPOSTAZIONI ============ -->
+  <section id="view-settings" class="view">
+    <div class="grid2">
+      <div class="card">
+        <h2>Modelli & pipeline</h2>
+        <div id="settingsForm" class="settings-grid"></div>
+        <button id="saveSettings" class="primary">Salva impostazioni</button>
+        <p class="hint">Le chiavi API si configurano nel file <code>.env</code>
+          (<code>TD_OPENROUTER_API_KEY</code>, <code>TD_FAL_KEY</code>) e richiedono un riavvio.</p>
+      </div>
+      <div class="card">
+        <h2>Diagnostica API</h2>
+        <div id="apiLog" class="apilog"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>TuDirector v<span id="ver"></span> — server su :18736 · tutti i riferimenti relativi (RP-safe)</footer>
+<script src="static/app.js"></script>
+</body>
+</html>
