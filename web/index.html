@@ -74,6 +74,12 @@
       <div class="card">
         <h3>Timeline regia</h3>
         <div id="timeline" class="timeline"></div>
+        <div id="mergeBar" class="row hidden" style="background:var(--panel2);
+             border:1px solid var(--line); border-radius:8px; padding:8px 12px">
+          <b id="mergeCount">0</b>&nbsp;finestre selezionate → unisci in un unico effetto
+          <input id="mergeQuery" style="flex:1" placeholder="nota per il regista (opzionale)">
+          <button id="mergeBtn" class="primary">⧉ Unisci</button>
+        </div>
         <div id="windows" class="windows"></div>
       </div>
       <div class="card">
@@ -91,8 +97,24 @@
       </div>
       <div class="card" id="outputCard">
         <h3>Output</h3>
+        <div class="row" style="margin:0 0 8px">
+          <b style="font-size:12px;color:var(--muted)">PREVIEW VELOCE</b>
+          <label>inizia a <input id="prevStart" type="number" value="0" min="0"
+                 step="1" style="width:70px"> s</label>
+          <label>durata <select id="prevDur" style="width:70px">
+            <option value="20" selected>20s</option><option value="30">30s</option>
+            <option value="60">60s</option></select></label>
+          <button id="prevBtn">⚡ Preview 400px</button>
+          <span id="prevStatus" class="hint"></span>
+        </div>
+        <div id="prevBox" class="hidden">
+          <p class="hint">anteprima a bassa risoluzione con gli effetti applicati —
+            il rendering finale resta quello qui sotto</p>
+          <video id="prevVideo" controls style="width:400px;max-width:100%;
+                 border-radius:8px;background:#000"></video>
+        </div>
         <video id="outVideo" controls></video>
-        <a id="outDownload" class="button" download>⬇ Scarica MP4</a>
+        <a id="outDownload" class="button" download>⬇ Scarica MP4 finale</a>
       </div>
     </div>
   </section>

@@ -17,6 +17,7 @@ tools:
   - citation_card
   - lower_third
   - highlight_pulse
+  - spotlight
   - narration
   - camera_switch
 limits:

@@ -49,8 +49,19 @@ def _schema(batch_len: int) -> Dict[str, Any]:
                             "motion": {"type": "string"},
                             "subject_pos": {"type": "string",
                                             "enum": ["left", "center", "right", "absent"]},
+                            "subject_box": {
+                                "type": "object",
+                                "properties": {
+                                    "x": {"type": "number"},
+                                    "y": {"type": "number"},
+                                    "w": {"type": "number"},
+                                    "h": {"type": "number"},
+                                },
+                                "required": ["x", "y", "w", "h"],
+                            },
                         },
-                        "required": ["i", "caption", "shot", "faces", "motion", "subject_pos"],
+                        "required": ["i", "caption", "shot", "faces", "motion",
+                                     "subject_pos", "subject_box"],
                     },
                 }
             },
@@ -97,10 +108,14 @@ def _mock_caption(idx_in_batch: int, path: Path) -> Dict[str, Any]:
     ]
     shot = "close" if var > 60 else ("medium" if bright < 150 else "wide")
     pos = ["center", "absent", "right", "left", "absent", "absent"][idx_in_batch % 6]
+    box = {"center": {"x": 0.38, "y": 0.18, "w": 0.26, "h": 0.62},
+           "right": {"x": 0.62, "y": 0.20, "w": 0.28, "h": 0.60},
+           "left": {"x": 0.10, "y": 0.20, "w": 0.28, "h": 0.60},
+           "absent": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}}[pos]
     return {"caption": scenes[idx_in_batch % len(scenes)],
             "shot": shot, "faces": 1 if var > 40 else 0,
             "motion": "statico" if var < 30 else "movimento",
-            "subject_pos": pos}
+            "subject_pos": pos, "subject_box": box}
 
 
 def describe_batch(batch: List[Tuple[float, Path]], model: Optional[str] = None,
@@ -120,7 +135,7 @@ def describe_batch(batch: List[Tuple[float, Path]], model: Optional[str] = None,
             digest = hashlib.md5(path.read_bytes()).hexdigest()
         except Exception:
             digest = ""
-        cached = cache.get("vision", f"{model}:v2:{digest}") if digest else None
+        cached = cache.get("vision", f"{model}:v3:{digest}") if digest else None
         if cached:
             results[i] = {"t": t, **cached}
         else:
@@ -151,6 +166,12 @@ def describe_batch(batch: List[Tuple[float, Path]], model: Optional[str] = None,
                 t, path = batch[gi]
                 shot = str(f.get("shot", "medium")).lower()
                 spos = str(f.get("subject_pos", "absent")).lower()
+                sb = f.get("subject_box") or {}
+                try:
+                    box = {k: round(min(1.0, max(0.0, float(sb.get(k, 0.0)))), 3)
+                           for k in ("x", "y", "w", "h")}
+                except (TypeError, ValueError):
+                    box = {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}
                 payload = {
                     "caption": str(f.get("caption", "")).strip()[:400],
                     "shot": shot if shot in _VALID_SHOTS else "medium",
@@ -158,11 +179,12 @@ def describe_batch(batch: List[Tuple[float, Path]], model: Optional[str] = None,
                     "motion": str(f.get("motion", ""))[:60],
                     "subject_pos": spos if spos in ("left", "center", "right", "absent")
                                    else "absent",
+                    "subject_box": box,
                 }
                 results[gi] = {"t": t, **payload}
                 digest = results[gi].get("_digest")
                 if digest:
-                    cache.put("vision", f"{model}:v2:{digest}", payload)
+                    cache.put("vision", f"{model}:v3:{digest}", payload)
         for gi in to_ask:
             if not results[gi].get("caption"):
                 t, path = batch[gi]

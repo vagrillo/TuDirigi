@@ -123,6 +123,23 @@ TOOLS: Dict[str, Dict[str, Any]] = {
         },
         "default_dur": 1.2, "min_dur": 0.6, "max_dur": 3.0,
     },
+    "spotlight": {
+        "label": "Spotlight sul soggetto",
+        "desc": "Evidenzia il SOGGETTO principale isolandolo dal resto: mode=color → il "
+                "resto diventa bianco e nero e il soggetto resta a colori; mode=dim → il "
+                "resto si scurisce e il soggetto resta a luminosità normale. Centro e "
+                "raggi dell'ellisse (cx,cy,rx,ry normalizzati 0..1) prendili dal campo "
+                "subject_box delle didascalie: cx=x+w/2, cy=y+h/2, rx=w/2*1.2, ry=h/2*1.2.",
+        "params": {
+            "mode": {"type": "enum", "values": ["color", "dim"], "default": "color"},
+            "dim": {"type": "number", "min": 0.1, "max": 0.6, "default": 0.3},
+            "cx": {"type": "number", "min": 0.0, "max": 1.0, "default": 0.5},
+            "cy": {"type": "number", "min": 0.0, "max": 1.0, "default": 0.45},
+            "rx": {"type": "number", "min": 0.08, "max": 0.6, "default": 0.28},
+            "ry": {"type": "number", "min": 0.1, "max": 0.8, "default": 0.45},
+        },
+        "default_dur": 5.0, "min_dur": 2.0, "max_dur": 30.0,
+    },
     "slowmo": {
         "label": "Rallenty",
         "desc": "Rallenta il passaggio (factor 0.5 = metà velocità). Il contenuto del "

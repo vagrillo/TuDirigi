@@ -19,12 +19,13 @@ const DEC_COLORS = {
   effects: "#d2a8ff", text_overlay: "#ffa657", lower_third: "#ffa657",
   polaroid: "#ff7b72", citation_card: "#ff7b72", sticker_anim: "#f2cc60",
   camera_switch: "#4dc3ff", slowmo: "#79c0ff", narration: "#ff9ed2",
+  spotlight: "#fff27b",
 };
 const DEC_LABEL = {
   zoom: "zoom", pan: "pan", highlight_pulse: "pulse", effects: "effetti",
   text_overlay: "testo", lower_third: "banner", polaroid: "polaroid",
   citation_card: "citazione", sticker_anim: "animazione",
-  camera_switch: "CAM", slowmo: "rallenty", narration: "voce",
+  camera_switch: "CAM", slowmo: "rallenty", narration: "voce", spotlight: "spot",
 };
 
 /* ---------------------------------------------------------------- api */
@@ -238,8 +239,10 @@ function renderWindows(j) {
   el.innerHTML = wins.map(w => `
     <div class="window" data-wid="${w.window_id}">
       <div class="w-head">
-        <span class="w-id">${w.window_id} · ${fmtT(w.t_start)}–${fmtT(w.t_end)}</span>
-        <span class="w-mood">mood: ${esc(w.mood || "—")} ${w.engine === "mock" ? "· [mock]" : ""}</span>
+        <input type="checkbox" class="merge-check" data-wid="${w.window_id}"
+               title="seleziona per unire">
+        <span class="w-id">${w.window_id}${w.merged_from ? " ⧉" : ""} · ${fmtT(w.t_start)}–${fmtT(w.t_end)}</span>
+        <span class="w-mood">mood: ${esc(w.mood || "—")} ${w.engine === "mock" ? "· [mock]" : ""}${w.edited ? " · ✎" : ""}</span>
         <span style="flex:1"></span>
         <button class="redo-btn" data-wid="${w.window_id}">↻ redo</button>
       </div>
@@ -254,8 +257,18 @@ function renderWindows(j) {
               d.reason ? `<span class="d-reason" title="${esc(d.reason)}">💡</span>` : ""}
           </div>`).join("") || "<em class='hint'>nessuna mossa di regia</em>"}
       </div>
+      <div class="row" style="margin-top:6px">
+        <input id="nl-${w.window_id}" class="nl-input" style="flex:1"
+               placeholder="modifica con linguaggio naturale, es: 'allunga lo zoom e togli la polaroid'">
+        <button id="nlbtn-${w.window_id}" class="nl-btn" data-wid="${w.window_id}">✎ Applica</button>
+      </div>
     </div>`).join("");
   $$(".redo-btn").forEach(b => b.onclick = () => redoWindow(b.dataset.wid));
+  $$(".merge-check").forEach(c => c.onchange = updateMergeBar);
+  $$(".nl-btn").forEach(b => b.onclick = () => nlEditWindow(b.dataset.wid));
+  $$(".nl-input").forEach(i => i.onkeydown = e => {
+    if (e.key === "Enter") nlEditWindow(i.id.replace("nl-", ""));
+  });
 }
 
 function decParams(d) {
@@ -275,6 +288,69 @@ async function redoWindow(wid) {
     });
     await refreshJob();
   } catch (e) { alert("redo fallito: " + e.message); }
+}
+
+/* ---------------------------------------------------------------- preview */
+async function startPreview() {
+  const t0 = parseFloat($("#prevStart").value || 0);
+  const dur = parseFloat($("#prevDur").value || 20);
+  const st = $("#prevStatus");
+  st.textContent = "generazione preview…";
+  try {
+    await api(`jobs/${state.jobId}/preview`, {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({t0, dur})});
+    // attende il completamento via polling del job
+    const iv = setInterval(async () => {
+      const j = await api("jobs/" + state.jobId);
+      const ps = j.stages.preview || {};
+      if (ps.status === "done") {
+        clearInterval(iv);
+        $("#prevVideo").src = `media/jobs/${state.jobId}/${ps.message}?v=${Date.now()}`;
+        $("#prevBox").classList.remove("hidden");
+        st.textContent = "✓ preview pronta";
+      } else if (ps.status === "error") {
+        clearInterval(iv);
+        st.textContent = "✗ " + (ps.message || "errore").slice(0, 120);
+      } else {
+        st.textContent = `… ${Math.round((ps.progress || 0) * 100)}%`;
+      }
+    }, 1500);
+  } catch (e) { st.textContent = "✗ " + e.message; }
+}
+
+/* ---------------------------------------------------------------- merge */
+function updateMergeBar() {
+  const sel = $$(".merge-check:checked").map(c => c.dataset.wid);
+  $("#mergeBar").classList.toggle("hidden", sel.length < 1);
+  $("#mergeCount").textContent = sel.length;
+}
+
+async function mergeSelected() {
+  const ids = $$(".merge-check:checked").map(c => c.dataset.wid);
+  if (ids.length < 1) return;
+  const query = $("#mergeQuery").value.trim();
+  if (!confirm(`Unire ${ids.length} finestre in un unico effetto di regia?`)) return;
+  try {
+    await api(`jobs/${state.jobId}/merge`, {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({windows: ids, query: query || null})});
+    await refreshJob();
+  } catch (e) { alert("merge fallito: " + e.message); }
+}
+
+async function nlEditWindow(wid) {
+  const input = $(`#nl-${wid}`);
+  const query = (input.value || "").trim();
+  if (!query) { alert("Scrivi la modifica richiesta (es. 'allunga lo zoom a 6 secondi')"); return; }
+  const btn = $(`#nlbtn-${wid}`);
+  btn.disabled = true; btn.textContent = "…";
+  try {
+    await api(`jobs/${state.jobId}/window/${wid}/edit`, {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({query})});
+    await refreshJob();
+  } catch (e) { alert("edit fallito: " + e.message); }
+  finally { btn.disabled = false; btn.textContent = "✎ Applica"; }
 }
 
 /* ---------------------------------------------------------------- log */
@@ -314,6 +390,8 @@ function initLog() {
 }
 
 function initStudio() {
+  $("#prevBtn").onclick = () => startPreview();
+  $("#mergeBtn").onclick = () => mergeSelected();
   $("#stRerun").onclick = async () => {
     if (!state.jobId) return;
     await api(`jobs/${state.jobId}/run`, {method: "POST", body: "{}"});

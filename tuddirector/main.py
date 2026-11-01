@@ -248,6 +248,96 @@ def redo_window(job_id: str, window_id: str, payload: Optional[dict] = None) -> 
     return {"ok": True, "window": wres}
 
 
+@app.post("/api/jobs/{job_id}/window/{window_id}/edit")
+def edit_window(job_id: str, window_id: str, payload: dict) -> dict:
+    """Modifica le decisioni di una finestra con una query in linguaggio naturale."""
+    query = (payload or {}).get("query", "").strip()
+    if not query:
+        raise HTTPException(400, "query mancante")
+    job = STORE.get(job_id)
+    if not job:
+        raise HTTPException(404, "job non trovato")
+    if job.get("status") == "running":
+        raise HTTPException(409, "job in esecuzione")
+    try:
+        from .director import edit_window_decisions
+        wres = edit_window_decisions(job, STORE.job_dir(job_id), window_id, query)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"edit fallito: {str(e)[:200]}")
+    for i, w in enumerate(job["windows"]):
+        if w["window_id"] == window_id:
+            wres["redo"] = True
+            job["windows"][i] = wres
+            break
+    STORE.update(job_id, windows=job["windows"])
+    return {"ok": True, "window": wres}
+
+
+@app.post("/api/jobs/{job_id}/merge")
+def merge_windows(job_id: str, payload: dict) -> dict:
+    """Unisce più finestre contigue in un unico effetto di regia (60/90/120s)."""
+    window_ids = (payload or {}).get("windows") or []
+    query = (payload or {}).get("query")
+    if not window_ids:
+        raise HTTPException(400, "nessuna finestra selezionata")
+    job = STORE.get(job_id)
+    if not job:
+        raise HTTPException(404, "job non trovato")
+    if job.get("status") == "running":
+        raise HTTPException(409, "job in esecuzione")
+    try:
+        from .director import direct_merged_window
+        wres = direct_merged_window(job, STORE.job_dir(job_id), window_ids, query)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"merge fallito: {str(e)[:200]}")
+    job["windows"] = [w for w in job["windows"] if w["window_id"] not in window_ids]
+    job["windows"].append(wres)
+    job["windows"].sort(key=lambda w: w["t_start"])
+    STORE.update(job_id, windows=job["windows"])
+    return {"ok": True, "window": wres, "removed": window_ids}
+
+
+@app.post("/api/jobs/{job_id}/preview")
+def preview(job_id: str, payload: Optional[dict] = None) -> dict:
+    """Preview veloce (~400px) di una finestra temporale con gli effetti applicati."""
+    payload = payload or {}
+    t0 = float(payload.get("t0", 0))
+    dur = float(payload.get("dur", apply_runtime_overrides().preview_dur))
+    job = STORE.get(job_id)
+    if not job:
+        raise HTTPException(404, "job non trovato")
+    if job.get("status") == "running":
+        raise HTTPException(409, "job in esecuzione")
+
+    def _task() -> None:
+        try:
+            from . import render as _r
+            from . import skills as _sk
+            job_dir = STORE.job_dir(job_id)
+            job = STORE.get(job_id)
+            job["_skill_preset"] = _sk.resolve(job.get("skill")).get("preset_effects") or {}
+            STORE.stage_start(job_id, "preview", f"preview {t0:.0f}s +{dur:.0f}s")
+            out = _r.build_preview(job, job_dir, t0, dur,
+                                   progress_cb=lambda p: STORE.stage_progress(
+                                       job_id, "preview", p, "preview"))
+            STORE.stage_done(job_id, "preview", f"{out.name}")
+            # ripristina lo stato del job (la preview non è un run completo)
+            back = "done" if job.get("output") else "idle"
+            STORE.update(job_id, status=back, stage=None, error=None)
+        except Exception as e:
+            log.exception("preview fallita")
+            STORE.stage_fail(job_id, "preview", str(e))
+            back = "done" if job.get("output") else "idle"
+            STORE.update(job_id, status=back, stage=None)
+
+    threading.Thread(target=_task, daemon=True).start()
+    return {"ok": True, "t0": t0, "dur": dur}
+
+
 @app.post("/api/jobs/{job_id}/render")
 def render_only(job_id: str) -> dict:
     job = STORE.get(job_id)
@@ -281,9 +371,11 @@ def render_only(job_id: str) -> dict:
             STORE.update(job_id, output="output/final.mp4", error=None,
                          render_id=render_id, renders=renders[-10:])
             STORE.stage_done(job_id, "render", "render manuale completato")
+            STORE.update(job_id, status="done", stage=None)
         except Exception as e:
             log.exception("render manuale fallito")
             STORE.stage_fail(job_id, "render", str(e))
+            STORE.update(job_id, status="error")
 
     threading.Thread(target=_task, daemon=True).start()
     return {"ok": True}

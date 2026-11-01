@@ -20,6 +20,12 @@ Per OGNI fotogramma restituisci (JSON structured output):
   `left` (terzo sinistro), `center` (terzo centrale), `right` (terzo destro),
   `absent` (nessun soggetto dominante / solo ambiente). È usato dal regista per
   posizionare grafiche senza coprire il soggetto: sii preciso.
+- `subject_box`: riquadro del soggetto principale in coordinate NORMALIZZATE
+  0..1 rispetto al fotogramma: `x,y` = angolo alto-sinistra, `w,h` = larghezza e
+  altezza. Deve contenere testa e busto (o l'oggetto principale). Se il soggetto
+  è `absent`, copri l'intero frame {x:0, y:0, w:1, h:1}. Serve al regista per
+  evidenziare il soggetto (spotlight) e per le zone libere delle sovrimpressioni:
+  sii accurato, box stretti attorno al soggetto.
 
 Regole:
 - Sii specifico: "una persona in cappotto rosso parla davanti a un vetrata di un

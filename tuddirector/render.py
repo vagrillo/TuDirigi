@@ -262,7 +262,8 @@ def _group_by_track(decisions: List[Dict[str, Any]], switch_plan: List[float]) -
 
 
 def _build_track_graph(d_list: List[Dict[str, Any]], duration: float, fps: int,
-                       with_fps: bool = True) -> Tuple[List[str], List[Dict[str, Any]]]:
+                       with_fps: bool = True, w: int = 0, h: int = 0
+                       ) -> Tuple[List[str], List[Dict[str, Any]]]:
     """Filtergraph di camera per una traccia: [prescale → zoompan → effetti].
 
     with_fps=False omette il filtro fps (già applicato a monte, es. dopo concat).
@@ -270,8 +271,11 @@ def _build_track_graph(d_list: List[Dict[str, Any]], duration: float, fps: int,
     Ritorna (chain, freeze_decisions).
     """
     s = settings()
+    W, H = w or s.out_w, h or s.out_h
+    W -= W % 2
+    H -= H % 2  # yuv420p: dimensioni pari (il crop arrotonda comunque al pari)
     chain: List[str] = ([f"fps={fps}"] if with_fps else [])
-    chain += [f"scale={s.out_w * 4}:-2:flags=bicubic"]
+    chain += [f"scale={W * 4}:-2:flags=bicubic"]
     zooms = _ZoomExpr(fps)
     freeze: List[Dict[str, Any]] = []
     for d in d_list:
@@ -292,11 +296,11 @@ def _build_track_graph(d_list: List[Dict[str, Any]], duration: float, fps: int,
         z, x, y = zexpr
         chain.append(
             f"zoompan=z='{z}':x='clip({x},0,iw-iw/zoom)':y='clip({y},0,ih-ih/zoom)'"
-            f":d=1:s={s.out_w}x{s.out_h}:fps={fps}"
+            f":d=1:s={W}x{H}:fps={fps}"
         )
     else:
-        chain.append(f"scale={s.out_w}:{s.out_h}:force_original_aspect_ratio=increase,"
-                     f"crop={s.out_w}:{s.out_h}")
+        chain.append(f"scale={W}:{H}:force_original_aspect_ratio=increase,"
+                     f"crop={W}:{H}")
     for d in d_list:
         if d["type"] == "effects":
             e = _eq_expr(d["params"])
@@ -331,8 +335,8 @@ def _run_ffmpeg(cmd: List[str], progress_cb: Optional[Callable] = None,
         raise RenderError(f"ffmpeg exit {proc.returncode}: {err}")
 
 
-def _encode_args(crf: int = 20) -> List[str]:
-    return ["-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf),
+def _encode_args(crf: int = 20, preset: str = "veryfast") -> List[str]:
+    return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf),
             "-pix_fmt", "yuv420p", "-movflags", "+faststart"]
 
 
@@ -461,9 +465,15 @@ def render_job(job: Dict[str, Any], job_dir: Path, progress_cb=None) -> Path:
 def _render_single(job_id: Optional[str], job_dir: Path, src0: Path,
                    decisions: List[Dict[str, Any]], duration: float,
                    tracks: List[Dict[str, Any]], final: Path,
-                   progress_cb=None, fps: int = 25) -> Path:
-    """Una passata: timeline (slowmo reale) → camera → overlays → audio + narrazioni."""
+                   progress_cb=None, fps: int = 25, size=None, input_seek=None,
+                   fast: bool = False) -> Path:
+    """Una passata: timeline (slowmo reale) → camera → spotlight → overlays → audio.
+
+    size=(w,h) per preview a bassa risoluzione; input_seek=(t0,) per il trim
+    della preview (le decisioni vanno già shiftate dal chiamante); fast=encode veloce.
+    """
     s = settings()
+    W, H = size or (s.out_w, s.out_h)
     slowmos = [d for d in decisions if d["type"] == "slowmo"]
     timeline = build_timeline(duration, slowmos)
     out_dur = timeline["out_duration"]
@@ -479,10 +489,12 @@ def _render_single(job_id: Optional[str], job_dir: Path, src0: Path,
         cam_decisions.append(d2)
     cam_decisions.sort(key=lambda d: d["t"])
     graph, freeze_unused = _build_track_graph(cam_decisions, out_dur, fps,
-                                              with_fps=False)
+                                              with_fps=False, w=W, h=H)
 
-    inputs: List[str] = ["-i", str(src0)]
+    inputs: List[str] = (["-ss", f"{input_seek[0]:.3f}"] if input_seek else []) + \
+        ["-i", str(src0)]
     fc_parts: List[str] = []
+    fi = 1  # contatore input image (maschere spotlight + overlays)
 
     # ---- video: timeline segmentata + catena camera
     segs = timeline["segments"]
@@ -514,7 +526,7 @@ def _render_single(job_id: Optional[str], job_dir: Path, src0: Path,
                 d2["t"] = round((t0s - out_a) * f, 3)
                 d2["dur"] = round((t1s - t0s) * f, 3)
                 seg_ds.append(d2)
-            graph_k, _ = _build_track_graph(seg_ds, b - a, fps, with_fps=False)
+            graph_k, _ = _build_track_graph(seg_ds, b - a, fps, with_fps=False, w=W, h=H)
             sk = f"sg{k}"
             fc_parts.append(";" + f"[{split_labels[k]}]trim=start={a:.3f}:end={b:.3f},"
                                   f"setpts=PTS-STARTPTS{',' if graph_k else ''}"
@@ -526,14 +538,54 @@ def _render_single(job_id: Optional[str], job_dir: Path, src0: Path,
         graph = ["null"]  # camera già applicata per segmento: solo pass-through
     else:
         video_src = "0:v"
+    graph = graph if video_src != "vcat" else _build_track_graph(
+        [], out_dur, fps, with_fps=False, w=W, h=H)[0]
     fc_parts.append((";" if fc_parts else "") + f"[{video_src}]{','.join(graph)}[base]")
+
+    # ---- spotlight (soggetto a colori/luminosità normale, resto trattato)
+    # Tecnica: base = frame trattato (B/N o scurito); patch = crop colore del
+    # soggetto con alpha dall'ellisse (alphamerge: luma maschera → alpha, niente
+    # mix dei piani di croma); overlay del patch sul base, attivo nella finestra.
+    spl_list = [d for d in cam_decisions if d["type"] == "spotlight"
+                and d.get("params", {}).get("_png")]
+    last = "base"  # continua attraverso spotlight e overlays
+    for k, d in enumerate(spl_list):
+        p = d["params"]
+        mode = p.get("mode", "color")
+        dim = float(p.get("dim", 0.3))
+        treat = "hue=s=0" if mode == "color" else f"eq=brightness={-abs(dim):.3f}"
+        nxt = f"spl{k}"
+        Wf, Hf = size or (s.out_w, s.out_h)
+        cx, cy = float(p.get("cx", 0.5)), float(p.get("cy", 0.45))
+        rx, ry = float(p.get("rx", 0.28)), float(p.get("ry", 0.45))
+        x0 = max(0, int((cx - rx) * Wf)) // 2 * 2
+        y0 = max(0, int((cy - ry) * Hf)) // 2 * 2
+        x1 = min(Wf, int((cx + rx) * Wf) + 2) // 2 * 2
+        y1 = min(Hf, int((cy + ry) * Hf) + 2) // 2 * 2
+        cw, ch = max(16, x1 - x0), max(16, y1 - y0)
+        # maschera: loop per l'intera durata (alphamerge è framesync)
+        inputs += ["-loop", "1", "-t", f"{out_dur:.3f}", "-i", p["_png"]]
+        mi = fi
+        fi += 1
+        fc_parts.append(f";[{last}]split=3[spa{k}][spb{k}][spc{k}]")
+        fc_parts.append(f";[spa{k}]{treat},format=yuv420p[spf{k}]")
+        fc_parts.append(f";[spb{k}]crop={cw}:{ch}:{x0}:{y0}[spcr{k}]")
+        fc_parts.append(f";[{mi}:v]format=gray,fps={fps},setpts=PTS-STARTPTS"
+                        f",crop={cw}:{ch}:{x0}:{y0}[spmkk{k}]")
+        fc_parts.append(f";[spcr{k}][spmkk{k}]alphamerge[sphole{k}]")
+        # compone: grigio pieno + patch colore del soggetto
+        fc_parts.append(f";[spf{k}][sphole{k}]overlay={x0}:{y0}[spmerged{k}]")
+        # attivo solo nella finestra: fuori mostra il ramo originale spc
+        fc_parts.append(
+            f";[spc{k}][spmerged{k}]overlay=0:0:enable='between(t,{d['t']:.3f},"
+            f"{d['t'] + d['dur']:.3f})'[{nxt}]")
+        last = nxt
 
     # ---- overlays
     ov_list = [d for d in cam_decisions if d["type"] in
                ("text_overlay", "lower_third", "polaroid", "citation_card", "sticker_anim")
                and d.get("params", {}).get("_png")]
-    fi = 1
-    last = "base"
+    # fi e last continuano dalla numerazione del blocco spotlight
     for d in ov_list:
         inputs += ["-loop", "1", "-t", f"{max(d['dur'], 0.4):.3f}", "-i", d["params"]["_png"]]
         nxt = f"ov{fi}"
@@ -725,3 +777,73 @@ def out_dir_p(job_dir: Path) -> Path:
     d = job_dir / "output"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+# ---------------------------------------------------------------- preview
+def build_preview(job: Dict[str, Any], job_dir: Path, t0: float, dur: float,
+                  progress_cb=None) -> Path:
+    """Preview veloce a bassa risoluzione di una finestra temporale.
+
+    Ritaglia il tempo (input seek) e shifta le decisioni che intersecano la
+    finestra; niente multi-camera (usa la traccia 0). Output in output/preview_*.
+    """
+    s = settings()
+    out_dir = job_dir / "output"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tracks = job.get("tracks", [])
+    if not tracks:
+        raise RenderError("nessuna traccia nel job")
+    duration = min(t.get("duration", 0) for t in tracks if t.get("duration", 0) > 0) or 0
+    t1 = min(t0 + dur, duration)
+    if t1 - t0 < 1.0:
+        raise RenderError("finestra preview troppo corta")
+    W = int(s.preview_w or 400)
+    H = max(120, round(W * s.out_h / max(1, s.out_w)))
+    H -= H % 2  # pari: la maschera deve combaciare col frame yuv420p
+    fps = int(job.get("out_fps") or 0) or int(s.out_fps or 0)
+    if not fps:
+        fps = int(round(min(60, max(24, tracks[0].get("fps") or 25))))
+
+    decisions: List[Dict[str, Any]] = []
+    for w in job.get("windows", []):
+        decisions.extend(w.get("decisions", []))
+    skill = job.get("_skill_preset") or {}
+    if skill and any(skill.values()):
+        base = dict(skill)
+        base.setdefault("saturation", 0)
+        base.setdefault("contrast", 0)
+        base.setdefault("brightness", 0)
+        if any(base.values()):
+            decisions = [{"type": "effects", "t": 0.0, "dur": duration,
+                          "params": base}] + decisions
+
+    import copy
+    shifted: List[Dict[str, Any]] = []
+    for d in decisions:
+        if d["type"] == "camera_switch":
+            continue  # preview sempre sulla traccia principale
+        a, b = float(d["t"]), float(d["t"]) + max(float(d.get("dur", 0)), 0.1)
+        if b <= t0 + 0.05 or a >= t1 - 0.05:
+            continue
+        d2 = copy.deepcopy(d)
+        d2["t"] = round(max(0.0, a - t0), 3)
+        d2["dur"] = round(min(b, t1) - max(a, t0), 3)
+        shifted.append(d2)
+    prepare_overlays(shifted, job_dir)
+    for d in shifted:
+        if d.get("tts_clip"):
+            d["params"]["_tts_path"] = str(job_dir / d["tts_clip"])
+        if d["type"] == "spotlight" and d.get("params", {}).get("_png"):
+            # maschera alla dimensione della preview (maskedmerge esige stessa size)
+            p = d["params"]
+            from .overlay import make_spotlight_mask
+            make_spotlight_mask(float(p.get("cx", 0.5)), float(p.get("cy", 0.45)),
+                                float(p.get("rx", 0.28)), float(p.get("ry", 0.45)),
+                                Path(p["_png"]), w=W, h=H)
+
+    src0 = job_dir / tracks[0]["path"]
+    out = out_dir / f"preview_{int(t0)}_{int(t1 - t0)}.mp4"
+    joblog.info(job.get("id"), f"preview {t0:.0f}–{t1:.0f}s @ {W}px "
+                f"({len(shifted)} effetti coinvolti)", "preview")
+    return _render_single(job.get("id"), job_dir, src0, shifted, t1 - t0, tracks, out,
+                          progress_cb, fps, size=(W, H), input_seek=(t0,), fast=True)

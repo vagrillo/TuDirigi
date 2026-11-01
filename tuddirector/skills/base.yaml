@@ -16,6 +16,7 @@ tools:
   - sticker_anim
   - lower_third
   - highlight_pulse
+  - spotlight
   - slowmo
   - narration
   - camera_switch

@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
@@ -165,6 +165,58 @@ def make_sticker(kind: str, out_png: Path, target_h: Optional[int] = None) -> Pa
     return out_png
 
 
+# ---------------------------------------------------------------- spotlight
+def make_spotlight_mask(cx: float, cy: float, rx: float, ry: float, out_png: Path,
+                        w: Optional[int] = None, h: Optional[int] = None,
+                        feather: int = 26) -> Path:
+    """Maschera grayscale (L) per spotlight: ellisse bianca sfumata su nero.
+
+    Coordinate normalizzate (0..1) sul frame di output. La maschera viene usata
+    come canale alpha: bianco = soggetto (a colori/luminosità normale),
+    nero = resto del frame (trattato). Feather sfuma i bordi.
+    """
+    s = settings()
+    W, H = w or s.out_w, h or s.out_h
+    img = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(img)
+    ex, ey = cx * W, cy * H
+    rw, rh = max(8, rx * W), max(8, ry * H)
+    d.ellipse([ex - rw, ey - rh, ex + rw, ey + rh], fill=255)
+    img = img.filter(ImageFilter.GaussianBlur(feather))
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    img.save(out_png)
+    return out_png
+
+
+def fill_spotlight_from_box(d: Dict[str, Any], captions: List[Dict[str, Any]],
+                            window: tuple) -> bool:
+    """Ricalcola cx,cy,rx,ry di una decisione spotlight dal subject_box delle caption.
+
+    Prende le caption nella finestra con soggetto presente e combina le box
+    (media pesata verso la fine, più recente = più vicina all'effetto).
+    Ritorna True se la posizione è stata impostata dalle analisi.
+    """
+    from statistics import median
+    t0, t1 = window
+    p = d.setdefault("params", {})
+    boxes = [c["subject_box"] for c in captions
+             if t0 - 2 <= c.get("t", -1) <= t1 + 2
+             and c.get("subject_pos") in ("left", "center", "right")
+             and isinstance(c.get("subject_box"), dict)]
+    if not boxes:
+        return False
+    # mediana per robustezza ai valori anomali
+    bx = median(b.get("x", 0.4) for b in boxes)
+    by = median(b.get("y", 0.2) for b in boxes)
+    bw = median(b.get("w", 0.25) for b in boxes)
+    bh = median(b.get("h", 0.55) for b in boxes)
+    p["cx"] = round(min(1.0, max(0.0, bx + bw / 2)), 3)
+    p["cy"] = round(min(1.0, max(0.0, by + bh / 2)), 3)
+    p["rx"] = round(min(0.6, max(0.08, bw / 2 * 1.25)), 3)
+    p["ry"] = round(min(0.8, max(0.1, bh / 2 * 1.25)), 3)
+    return True
+
+
 # ---------------------------------------------------------------- prep per render
 def prepare_overlays(decisions: list, job_dir: Path) -> dict:
     """Converte le decisioni grafiche in PNG pronti per il render.
@@ -211,6 +263,12 @@ def prepare_overlays(decisions: list, job_dir: Path) -> dict:
                 png = overlays_dir / f"stk-{i:03d}.png"
                 make_sticker(p.get("kind", "arrow"), png,
                              target_h=int(s.out_h * float(p.get("size", 0.2))))
+                p["_png"] = str(png)
+            elif d["type"] == "spotlight":
+                png = overlays_dir / f"spl-{i:03d}.png"
+                make_spotlight_mask(float(p.get("cx", 0.5)), float(p.get("cy", 0.45)),
+                                    float(p.get("rx", 0.28)), float(p.get("ry", 0.45)),
+                                    png)
                 p["_png"] = str(png)
         except Exception as e:
             log.warning("overlay %s (#%d) fallito: %s", d["type"], i, e)

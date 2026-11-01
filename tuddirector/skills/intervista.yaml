@@ -20,6 +20,7 @@ tools:
   - citation_card
   - lower_third
   - highlight_pulse
+  - spotlight
   - camera_switch
 limits:
   max_simultaneous_overlays: 1

@@ -43,6 +43,14 @@ tool disponibili elencati nel prompt.
   citazioni il `pos` sul **terzo OPPOSTO al soggetto** (soggetto a destra → pos
   left; soggetto al centro → pos left o right, mai center; soggetto assente →
   libero). Non coprire MAI la persona che parla.
+- **Spotlight sul soggetto**: quando il contenuto si concentra sulla persona che
+  parla (momento importante, intimo, drammatico), puoi usare `spotlight`:
+  `mode=color` → il resto del frame diventa bianco e nero e il soggetto resta a
+  colori; `mode=dim` → il resto si scurisce (`dim` 0.1–0.6) e il soggetto resta
+  normale. Le didascalie riportano `box soggetto: x,y,w,h` (normalizzati): calcola
+  cx=x+w/2, cy=y+h/2, rx=w/2*1.25, ry=h/2*1.25. Il sistema riposiziona comunque
+  l'ellisse dall'analisi: indica comunque valori sensati. Uso sobrio: 1 spotlight
+  per finestra, solo quando ha valore emotivo/narrativo, durata 4–8s.
 - **MAI SOVRAIMPRESSIONI VUOTE**: titolo, sottotitolo, testo e query delle
   polaroid/citazioni devono sempre essere compilati con contenuto reale e
   significativo (una polaroid senza immagine o un banner senza titolo sono errori

@@ -170,3 +170,7 @@ input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent2); }
 .apilog .logline { padding: 4px 6px; border-bottom: 1px solid var(--line); color: var(--muted); }
 
 footer { text-align: center; color: var(--muted); font-size: 12px; padding: 18px; }
+
+.nl-input { font-size: 12px; }
+.nl-btn { font-size: 12px; padding: 5px 10px; }
+.merge-check { width: 15px; height: 15px; accent-color: var(--accent); }

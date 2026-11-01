@@ -11,8 +11,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from . import joblog, llm
+from . import skills as skills_mod
 from .config import PROMPTS_DIR, settings
 from .director_tools import (director_json_schema, registry_for_prompt, validate_decision)
+from .overlay import fill_spotlight_from_box
 from .stt import segments_in_window
 from .vision import captions_in_window
 
@@ -90,9 +92,14 @@ def _fmt_captions(caps: List[Dict[str, Any]], n_tracks: int) -> str:
         track = c.get("track", 0)
         tag = f"[CAM {track}] " if n_tracks > 1 else ""
         spos = c.get("subject_pos", "absent")
+        sb = c.get("subject_box") or {}
+        box = ""
+        if spos in ("left", "center", "right") and sb:
+            box = (f"; box soggetto: x={sb.get('x')}, y={sb.get('y')}, "
+                   f"w={sb.get('w')}, h={sb.get('h')} (normalizzati)")
         lines.append(f"[{_fmt_time(c['t'])}] {tag}{c['caption']} "
                      f"(inquadratura: {c.get('shot', 'medium')}; volti: {c.get('faces', 0)}; "
-                     f"soggetto: {spos})")
+                     f"soggetto: {spos}{box})")
     return "\n".join(lines)
 
 
@@ -165,6 +172,23 @@ def _dominant_subject_pos(captions: List[Dict[str, Any]], t0: float, t1: float) 
     if not vals:
         return "absent"
     return Counter(vals).most_common(1)[0][0]
+
+
+def _fill_spotlights(job_id: Optional[str], decisions: List[Dict[str, Any]],
+                     captions: List[Dict[str, Any]],
+                     window: Tuple[float, float]) -> None:
+    """Posiziona le ellissi spotlight usando le subject_box rilette dalla vision."""
+    for d in decisions:
+        if d.get("type") != "spotlight":
+            continue
+        p = d.setdefault("params", {})
+        if fill_spotlight_from_box(d, captions, window):
+            joblog.info(job_id, "spotlight posizionato dall'analisi del soggetto "
+                        f"(cx={p['cx']}, cy={p['cy']}, rx={p['rx']}, ry={p['ry']})",
+                        "director", {"mode": p.get("mode")})
+        else:
+            joblog.warn(job_id, "spotlight senza soggetto analizzato: uso centro default",
+                        "director")
 
 
 def avoid_subject(decisions: List[Dict[str, Any]], captions: List[Dict[str, Any]],
@@ -301,6 +325,7 @@ def direct_window(job_dir: Any, window: Tuple[float, float],
         decisions = _mock_decisions(window, transcript, n_tracks, skill)
         decs = _validate_all(decisions)
         avoid_subject(decs, captions, window)
+        _fill_spotlights(job_id, decs, captions, window)
         result.update(summary="Mock: finestra demo con decisioni guidate da keyword.",
                       mood="neutro", decisions=decs)
         return result
@@ -323,6 +348,7 @@ def direct_window(job_dir: Any, window: Tuple[float, float],
                     parsed = {}
         decs = _validate_all(parsed.get("decisions") or [])
         avoid_subject(decs, captions, window)
+        _fill_spotlights(job_id, decs, captions, window)
         result.update(summary=str(parsed.get("summary", ""))[:500],
                       mood=parsed.get("mood") if parsed.get("mood") in MOODS else "neutro",
                       decisions=decs, engine="openrouter",
@@ -332,5 +358,117 @@ def direct_window(job_dir: Any, window: Tuple[float, float],
         result["error"] = str(e)[:300]
         decs = _validate_all(_mock_decisions(window, transcript, n_tracks, skill))
         avoid_subject(decs, captions, window)
+        _fill_spotlights(job_id, decs, captions, window)
         result["decisions"] = decs
     return result
+
+
+# ---------------------------------------------------------------- editing NL
+def edit_window_decisions(job: Dict[str, Any], job_dir: Any, window_id: str,
+                          query: str) -> Dict[str, Any]:
+    """Modifica le decisioni di una finestra con una richiesta in linguaggio naturale.
+
+    Il LLM riceve le decisioni ATTUALI + la richiesta e ritorna l'array modificato
+    (stesso structured output). Solo le decisioni cambiano: summary/mood restano.
+    """
+    import json as _json
+    s = settings()
+    sk = skills_mod.resolve(job.get("skill"))
+    job_id = job.get("id")
+    joblog.info(job_id, f"edit NL su {window_id}: «{query[:120]}»", "director")
+    win = next((w for w in job.get("windows", []) if w["window_id"] == window_id), None)
+    if win is None:
+        raise ValueError("finestra non trovata")
+    allowed = sk.get("tools") or []
+    cur = [{k: d[k] for k in ("type", "t", "dur", "params") if k in d}
+           for d in win.get("decisions", [])]
+    for d in cur:
+        d["params"] = {k: v for k, v in d.get("params", {}).items()
+                       if not str(k).startswith("_")}
+    system = f"""Sei un assistente di regia. Ricevi le decisioni di regia ATTUALI di una
+finestra di video e una richiesta di modifica in linguaggio naturale. Applica SOLO le
+modifiche richieste, mantieni il resto invariato. Puoi: cambiare parametri (es. durate,
+forza, posizione, colori), aggiungere nuove decisioni (usando solo i tool disponibili),
+rimuovere decisioni. I tempi t restano assoluti rispetto all'inizio del video.
+
+Tool disponibili: {', '.join(allowed)}.
+Limiti: max {sk.get('limits', {}).get('max_decisions', 8)} decisioni, zoom strength max {sk.get('limits', {}).get('max_zoom_strength', 0.45)}.
+ATTENZIONE: i parametri obbligatori devono essere SEMPRE compilati: lower_third richiede
+"title" non vuoto; text_overlay richiede l'SVG completo (viewBox 0 0 800 480, contenuto
+tra y=330 e y=470) con testo visibile; polaroid/citation_card richiedono "query".
+Le decisioni con parametri vuoti vengono scartate automaticamente.
+Rispondi SOLO con lo structured output (summary/mood/decisions), dove decisions è
+l'array COMPLETO delle decisioni dopo la modifica."""
+    user = (f"DECISIONI ATTUALI:\n{_json.dumps(cur, ensure_ascii=False, indent=1)}\n\n"
+            f"RICHIESTA DELL'UTENTE: {query}\n\n"
+            f"Restituisci l'array completo aggiornato.")
+    if not llm.available():
+        raise LLMUnavailable("modifica NL richiede OPENROUTER_API_KEY")
+    schema = director_json_schema(allowed, MOODS)
+    resp = llm.chat([{"role": "system", "content": system},
+                     {"role": "user", "content": user}],
+                    model=s.director_model, json_schema=schema,
+                    temperature=0.3, max_tokens=3000)
+    parsed = resp.get("parsed") or {}
+    t0, t1 = win["t_start"], win["t_end"]
+    n_tracks = len(job.get("tracks", [])) or 1
+    duration = min(tr["duration"] for tr in job["tracks"] if tr.get("duration") > 0)
+    decs = []
+    for d in parsed.get("decisions") or []:
+        v = validate_decision(d, t0, t1, allowed, sk["limits"]["max_zoom_strength"],
+                              n_tracks > 1, duration, n_tracks)
+        if v:
+            decs.append(v)
+        else:
+            joblog.warn(job_id, f"edit NL: decisione scartata {d.get('type')}", "director")
+    captions = job.get("captions", [])
+    avoid_subject(decs, captions, (t0, t1))
+    _fill_spotlights(job_id, decs, captions, (t0, t1))
+    joblog.info(job_id, f"edit NL completato: {len(cur)} → {len(decs)} decisioni",
+                "director")
+    return {"window_id": window_id, "t_start": t0, "t_end": t1,
+            "summary": win.get("summary", ""), "mood": win.get("mood", "neutro"),
+            "decisions": decs, "engine": "openrouter-edit", "edited": query[:200]}
+
+
+class LLMUnavailable(Exception):
+    pass
+
+
+# ---------------------------------------------------------------- merge finestre
+def direct_merged_window(job: Dict[str, Any], job_dir: Any, window_ids: List[str],
+                         user_note: Optional[str] = None) -> Dict[str, Any]:
+    """Unisce più finestre contigue in un unico effetto di regia.
+
+    Ri-esegue il regista sull'intero span con max_decisions amplificato,
+    così gli effetti attraversano i confini delle vecchie finestre (60/90/120s).
+    """
+    import time as _time
+    s = settings()
+    sk = dict(skills_mod.resolve(job.get("skill")))
+    job_id = job.get("id")
+    wins = sorted((w for w in job.get("windows", []) if w["window_id"] in window_ids),
+                  key=lambda w: w["t_start"])
+    if not wins:
+        raise ValueError("finestre non trovate")
+    t0, t1 = wins[0]["t_start"], wins[-1]["t_end"]
+    wid = "m" + "-".join(str(int(w["t_start"] // s.window_len))
+                         for w in (wins[0], wins[-1])) + f"-{int(_time.time()) % 10000}"
+    sk["limits"] = dict(sk.get("limits", {}))
+    sk["limits"]["max_decisions"] = min(20, int(sk["limits"].get("max_decisions", 8)) * 3)
+    joblog.info(job_id, f"merge finestre {window_ids} → effetto unico "
+                f"{t0:.0f}–{t1:.0f}s (max {sk['limits']['max_decisions']} decisioni)",
+                "director")
+    transcript = (job.get("transcript") or {}).get("segments", [])
+    captions = job.get("captions", [])
+    n_tracks = len(job.get("tracks", [])) or 1
+    duration = min(tr["duration"] for tr in job["tracks"] if tr.get("duration") > 0)
+    prev = next((w.get("summary") for w in job.get("windows", [])
+                 if w["t_end"] <= t0 and w.get("summary")), None)
+    note = user_note or ("Questo span unisce più finestre: crea UNA regia continua e "
+                         "coerente su tutto l'arco, senza ripetere la stessa mossa a "
+                         "cavallo dei confini.")
+    wres = direct_window(job_dir, (t0, t1), transcript, captions, sk, prev,
+                         duration, n_tracks, user_note=note, wid=wid)
+    wres["merged_from"] = window_ids
+    return wres

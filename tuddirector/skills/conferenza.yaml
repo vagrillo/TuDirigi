@@ -14,6 +14,7 @@ tools:
   - citation_card
   - lower_third
   - highlight_pulse
+  - spotlight
   - narration
 limits:
   max_simultaneous_overlays: 1

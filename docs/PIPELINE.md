@@ -255,3 +255,32 @@ Per la sincronia A/V:
 - **Reranking delle didascalie** con un secondo modello economico.
 - **Audio ducking** automatico sotto le narrazioni.
 - **Fine‑tuning delle skill** dai feedback 👍/👎 dell'utente sulle decisioni.
+
+## 11. Spotlight, preview e editing del montaggio (v3)
+
+### Spotlight sul soggetto
+- La vision estrae anche `subject_box` (x,y,w,h normalizzati) del soggetto principale
+  per ogni fotogramma (cache key v3).
+- Nuovo tool `spotlight` (`mode=color`: resto B/N, soggetto a colori; `mode=dim`:
+  resto scurito di `dim`, soggetto normale). Il regista indica centro/raggi
+  dall'analisi; il server **riposiziona comunque l'ellisse** dalle subject_box
+  (mediana nella finestra) — `fill_spotlight_from_box`.
+- Render: base = frame trattato; patch = crop colore del soggetto con alpha
+  dall'ellisse sfumata (`alphamerge`, solo luma → nessun mix di croma);
+  overlay attivo solo nella finestra con passthrough originale fuori.
+
+### Preview prima del render finale
+- `POST api/jobs/{id}/preview {t0, dur}` → anteprima **400px** (proporzioni
+  mantenute), preset ultrafast, solo le decisioni che intersecano la finestra
+  (shiftate sul nuovo tempo). Stage `preview` dedicato; ripristina lo stato del job.
+- Nella UI card Output: inizio + durata (20/30/60s) + "⚡ Preview 400px".
+
+### Editing con linguaggio naturale
+- `POST api/jobs/{id}/window/{wid}/edit {query}` → il regista riscrive le decisioni
+  della finestra applicando la richiesta (es. "allunga lo zoom a 6 secondi").
+  Validazione anti-vuoti e guard anti-overlap restano attivi.
+
+### Merge finestre in un effetto unico
+- `POST api/jobs/{id}/merge {windows:[...], query?}` → unisce finestre contigue
+  (60/90/120s) ri-eseguendo il regista sull'intero span con max_decisions amplificato.
+  Nella UI: checkbox sulle finestre → barra "⧉ Unisci".
