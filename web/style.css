@@ -194,3 +194,7 @@ footer { text-align: center; color: var(--muted); font-size: 12px; padding: 18px
   border-top-color: var(--accent2); border-radius: 50%;
   animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+#prevClickToPlay { position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: center; cursor: pointer; }
+#prevClickToPlay button { font-size: 16px; padding: 10px 22px;
+  background: rgba(13,17,23,.88); border-color: var(--accent2); }

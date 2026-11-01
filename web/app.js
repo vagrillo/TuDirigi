@@ -308,23 +308,36 @@ async function startPreview(t0Arg, durArg, label) {
   // popup immediato con spinner
   $("#prevLabel").textContent = label ? `Preview dello spezzone ${label}` : "Preview";
   $("#prevLoading").classList.remove("hidden");
+  $("#prevClickToPlay").classList.add("hidden");
   $("#prevVideo").classList.add("hidden");
   $("#prevBox").classList.remove("hidden");
+  // il file che la pipeline produrrà per QUESTA finestra (ignora i "done" vecchi)
+  const expected = `preview_${Math.floor(t0)}_${Math.round(dur)}.mp4`;
   try {
     await api(`jobs/${state.jobId}/preview`, {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({t0, dur})});
-    // attende il completamento via polling del job
+    const started = Date.now();
     const iv = setInterval(async () => {
+      if (Date.now() - started > 180000) {   // timeout di sicurezza 3 min
+        clearInterval(iv);
+        $("#prevLoading").classList.add("hidden");
+        $("#prevLabel").textContent = "Preview — timeout";
+        return;
+      }
       const j = await api("jobs/" + state.jobId);
       const ps = j.stages.preview || {};
-      if (ps.status === "done") {
+      if (ps.status === "done" && ps.message && ps.message.includes(expected)) {
         clearInterval(iv);
         $("#prevLoading").classList.add("hidden");
         const v = $("#prevVideo");
         v.src = `media/jobs/${state.jobId}/${ps.message}?v=${Date.now()}`;
         v.classList.remove("hidden");
-        v.play().catch(() => {});
+        // autoplay spesso bloccato (gesto scaduto): fallback click-to-play
+        const pr = v.play();
+        if (pr && pr.catch) pr.catch(() => {
+          $("#prevClickToPlay").classList.remove("hidden");
+        });
         st.textContent = "✓ preview pronta";
       } else if (ps.status === "error") {
         clearInterval(iv);
@@ -337,7 +350,7 @@ async function startPreview(t0Arg, durArg, label) {
         $("#prevLoadTxt").textContent =
           `generazione… ${Math.round((ps.progress || 0) * 100)}%`;
       }
-    }, 1500);
+    }, 1200);
   } catch (e) { st.textContent = "✗ " + e.message; }
 }
 
@@ -406,6 +419,16 @@ async function loadJobLog(scroll) {
 function initPreviewPopup() {
   $("#prevClose").onclick = closePreviewPopup;
   $("#prevBox").onclick = e => { if (e.target.id === "prevBox") closePreviewPopup(); };
+  const v = $("#prevVideo");
+  $("#prevClickToPlay").onclick = () => {
+    $("#prevClickToPlay").classList.add("hidden");
+    v.play().catch(err => $("#prevLabel").textContent = "Preview — " + err.message);
+  };
+  v.onerror = () => {
+    if (!v.src) return;
+    $("#prevLoading").classList.add("hidden");
+    $("#prevLabel").textContent = "Preview — file non riproducibile";
+  };
   document.addEventListener("keydown", e => {
     if (e.key === "Escape" && !$("#prevBox").classList.contains("hidden"))
       closePreviewPopup();
