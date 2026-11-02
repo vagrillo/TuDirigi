@@ -80,8 +80,8 @@ def make_polaroid(image_path: Path, caption: str, rotate: float, out_png: Path) 
     """Compone una polaroid: cornice bianca, foto, didascalia, rotazione + ombra."""
     s = settings()
     sc = scale()
-    pw, ph = int(300 * sc), int(330 * sc)      # polaroid totale
-    pad, cap_h = int(16 * sc), int(64 * sc)
+    pw, ph = int(230 * sc), int(260 * sc)      # polaroid totale (compatta)
+    pad, cap_h = int(14 * sc), int(52 * sc)
     iw, ih = pw - 2 * pad, ph - 2 * pad - cap_h
 
     img = Image.open(image_path).convert("RGB")
@@ -92,11 +92,11 @@ def make_polaroid(image_path: Path, caption: str, rotate: float, out_png: Path) 
     d.rounded_rectangle([0, 0, pw - 1, ph - 1], radius=int(6 * sc), fill=(255, 255, 255, 242))
     pol.paste(img, (pad, pad))
     try:
-        f = ImageFont.truetype(_FONT_ITALIC, int(22 * sc))
+        f = ImageFont.truetype(_FONT_ITALIC, int(17 * sc))
     except Exception:
         f = ImageFont.load_default()
     if caption:
-        d.text((pw // 2, ph - cap_h // 2 - int(4 * sc)), caption[:40], font=f,
+        d.text((pw // 2, ph - cap_h // 2 - int(4 * sc)), caption[:34], font=f,
                fill=(40, 44, 52, 255), anchor="mm")
 
     # ombra

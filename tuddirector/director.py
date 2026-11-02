@@ -363,6 +363,23 @@ def direct_window(job_dir: Any, window: Tuple[float, float],
     return result
 
 
+def _search_keywords(text: str) -> str:
+    """Estrae 2-3 parole chiave per la ricerca immagini da una frase utente/LLM."""
+    try:
+        resp = llm.chat(
+            [{"role": "user",
+              "content": "Estrai 2-3 parole chiave essenziali per cercare un'immagine "
+                         "stock che rappresenti questo testo. Rispondi SOLO con le "
+                         f"parole chiave separate da spazio, nient'altro. Testo: {text}"}],
+            model=settings().vision_model, temperature=0.0, max_tokens=20)
+        kw = (resp.get("content") or "").strip().strip('"').replace("\n", " ")
+        if kw and len(kw) <= 80 and "," not in kw[:3]:
+            return kw
+    except Exception as e:
+        log.warning("estrazione keywords fallita: %s", e)
+    return text[:60]
+
+
 # ---------------------------------------------------------------- editing NL
 def edit_window_decisions(job: Dict[str, Any], job_dir: Any, window_id: str,
                           query: str) -> Dict[str, Any]:
@@ -397,6 +414,10 @@ ATTENZIONE: i parametri obbligatori devono essere SEMPRE compilati: lower_third 
 "title" non vuoto; text_overlay richiede l'SVG completo (viewBox 0 0 800 480, contenuto
 tra y=330 e y=470) con testo visibile; polaroid/citation_card richiedono "query".
 Le decisioni con parametri vuoti vengono scartate automaticamente.
+ESEMPIO — se l'utente chiede "mostra la foto di un gatto" aggiungi:
+{{"type":"polaroid","t":<secondo nella finestra>,"dur":5,
+ "params":{{"query":"gatto","caption":"un gatto","pos":"right","rotate":-6}}}}
+La "query" è il testo di RICERCA dell'immagine (parole chiave, non vuota mai).
 Rispondi SOLO con lo structured output (summary/mood/decisions), dove decisions è
 l'array COMPLETO delle decisioni dopo la modifica."""
     user = (f"DECISIONI ATTUALI:\n{_json.dumps(cur, ensure_ascii=False, indent=1)}\n\n"
@@ -415,6 +436,14 @@ l'array COMPLETO delle decisioni dopo la modifica."""
     duration = min(tr["duration"] for tr in job["tracks"] if tr.get("duration") > 0)
     decs = []
     for d in parsed.get("decisions") or []:
+        if isinstance(d, dict) and d.get("type") in ("polaroid", "citation_card"):
+            dp = d.setdefault("params", {})
+            if not str(dp.get("query", "")).strip():
+                raw = str(dp.get("caption") or d.get("reason") or query).strip()
+                salv = _search_keywords(raw) if raw else "immagine citata"
+                dp["query"] = salv[:80]
+                joblog.info(job_id, f"edit NL: query mancante per {d['type']} — "
+                            f"uso «{salv[:50]}»", "director")
         v = validate_decision(d, t0, t1, allowed, sk["limits"]["max_zoom_strength"],
                               n_tracks > 1, duration, n_tracks)
         if v:

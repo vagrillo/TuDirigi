@@ -185,6 +185,9 @@ def find_image(query: str, out_path: Path, kind: str = "fact",
         attempts = ["wikimedia", "openverse", "placeholder"]
     else:
         attempts = ["openverse", "wikimedia", "placeholder"]
+    if s.fal_key:
+        # generazione AI: preferita al placeholder, dopo le ricerche
+        attempts.insert(-1, "generate")
     if policy == "generate":
         attempts = ["generate", "placeholder"]
     elif policy == "search":

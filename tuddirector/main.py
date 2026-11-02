@@ -317,9 +317,17 @@ def preview(job_id: str, payload: Optional[dict] = None) -> dict:
         try:
             from . import render as _r
             from . import skills as _sk
+            from . import assets as _a
+            from . import tts as _tts
             job_dir = STORE.job_dir(job_id)
             job = STORE.get(job_id)
             job["_skill_preset"] = _sk.resolve(job.get("skill")).get("preset_effects") or {}
+            # scarica asset/TTS mancanti (es. polaroid aggiunte via edit NL)
+            flat = [d for w in job.get("windows", []) for d in w.get("decisions", [])]
+            _a.resolve_assets_for_decisions(flat, job_dir)
+            _tts.resolve_tts_for_decisions(flat, job_dir)
+            STORE.update(job_id, windows=job["windows"])
+            job = STORE.get(job_id)
             STORE.stage_start(job_id, "preview", f"preview {t0:.0f}s +{dur:.0f}s")
             out = _r.build_preview(job, job_dir, t0, dur,
                                    progress_cb=lambda p: STORE.stage_progress(

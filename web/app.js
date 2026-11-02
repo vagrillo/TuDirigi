@@ -326,6 +326,21 @@ async function redoWindow(wid) {
   } catch (e) { alert("redo fallito: " + e.message); }
 }
 
+/* attende che il job si liberi invece di fallire con 409 */
+async function apiNoBusy(path, opts, statusEl) {
+  for (let i = 0; i < 60; i++) {
+    try { return await api(path, opts); }
+    catch (e) {
+      if (String(e.message).includes("in esecuzione") && i < 59) {
+        if (statusEl) statusEl.textContent = "il job è occupato, attendo…";
+        await new Promise(r => setTimeout(r, 3000));
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
 /* ---------------------------------------------------------------- preview */
 async function startPreview(t0Arg, durArg, label) {
   const t0 = t0Arg !== undefined ? t0Arg : parseFloat($("#prevStart").value || 0);
@@ -342,9 +357,9 @@ async function startPreview(t0Arg, durArg, label) {
   // il file che la pipeline produrrà per QUESTA finestra (ignora i "done" vecchi)
   const expected = `preview_${Math.floor(t0)}_${Math.round(dur)}.mp4`;
   try {
-    await api(`jobs/${state.jobId}/preview`, {method: "POST",
+    await apiNoBusy(`jobs/${state.jobId}/preview`, {method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({t0, dur})});
+      body: JSON.stringify({t0, dur})}, st);
     const started = Date.now();
     const iv = setInterval(async () => {
       if (Date.now() - started > 180000) {   // timeout di sicurezza 3 min
@@ -403,7 +418,7 @@ async function mergeSelected() {
   const query = $("#mergeQuery").value.trim();
   if (!confirm(`Unire ${ids.length} finestre in un unico effetto di regia?`)) return;
   try {
-    await api(`jobs/${state.jobId}/merge`, {method: "POST",
+    await apiNoBusy(`jobs/${state.jobId}/merge`, {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({windows: ids, query: query || null})});
     await refreshJob();
@@ -415,10 +430,10 @@ async function nlEditWindow(wid) {
   const query = (input.value || "").trim();
   if (!query) { alert("Scrivi la modifica richiesta (es. 'allunga lo zoom a 6 secondi')"); return; }
   const btn = $(`#nlbtn-${wid}`);
-  btn.disabled = true; btn.textContent = "…";
+  btn.disabled = true; btn.textContent = "…attendo";
   try {
-    await api(`jobs/${state.jobId}/window/${wid}/edit`, {method: "POST",
-      headers: {"Content-Type": "application/json"}, body: JSON.stringify({query})});
+    await apiNoBusy(`jobs/${state.jobId}/window/${wid}/edit`, {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({query})}, btn);
     await refreshJob();
   } catch (e) { alert("edit fallito: " + e.message); }
   finally { btn.disabled = false; btn.textContent = "✎ Applica"; }

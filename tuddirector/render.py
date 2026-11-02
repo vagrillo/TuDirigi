@@ -610,8 +610,11 @@ def _render_single(job_id: Optional[str], job_dir: Path, src0: Path,
         nxt = f"ov{fi}"
         dur = max(d["dur"], 0.4)
         fadeout = f"fade=t=out:st={dur - 0.35:.3f}:d=0.35:alpha=1," if dur > 0.8 else ""
+        # gli overlay sono rasterizzati alla dimensione piena: in preview
+        # (400px) vanno scalati, altrimenti escono dal frame (overlay non scala)
         fc_parts.append(
-            f";[{fi}:v]format=rgba,fade=t=in:st=0:d=0.35:alpha=1,{fadeout}"
+            f";[{fi}:v]scale={W}:{H}:flags=lanczos,format=rgba,"
+            f"fade=t=in:st=0:d=0.35:alpha=1,{fadeout}"
             f"setpts=PTS-STARTPTS+{d['t']:.3f}/TB[oi{fi}]")
         p = d["params"]
         if d["type"] == "sticker_anim":
